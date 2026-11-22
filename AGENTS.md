@@ -30,8 +30,8 @@ Repository: https://github.com/yihui/luochu
 | Step | Issue | Status | Outcome / handoff |
 |---|---|---:|---|
 | Architecture and feasibility spikes | [#1](https://github.com/yihui/luochu/issues/1) | PR [#13](https://github.com/yihui/luochu/pull/13) | Findings and benchmark complete |
-| Go server and Host API | [#2](https://github.com/yihui/luochu/issues/2) | In progress | Stacked on #13; Go skeleton and tests |
-| CodeMirror and Djot source/visual core | [#3](https://github.com/yihui/luochu/issues/3) | Open | Blocked by #2 |
+| Go server and Host API | [#2](https://github.com/yihui/luochu/issues/2) | PR [#14](https://github.com/yihui/luochu/pull/14) | Stacked on #13; Go skeleton and tests |
+| CodeMirror and Djot source/visual core | [#3](https://github.com/yihui/luochu/issues/3) | In progress | Stacked on #14; editor shell and tests |
 | File tree, watching, conflicts, and SPA storage | [#4](https://github.com/yihui/luochu/issues/4) | Open | Blocked by #2-#3 |
 | Djot preview and visual widgets | [#5](https://github.com/yihui/luochu/issues/5) | Open | Blocked by #3-#4 |
 | Terminal and agent CLIs | [#6](https://github.com/yihui/luochu/issues/6) | Open | Blocked by #2-#4 |
@@ -58,8 +58,10 @@ issues and this section as the source of truth.
   reproducible Djot/parser benchmarks from lite-edit prototype commit
   `cabc7971ed4f496a146a764bf694e9b8f5c80fa4`.
 - Issue #2 is in progress on branch `stack/issue-2-server-skeleton`.
-- PR #13 is the Issue #1 stacked PR; PR #14 will be created from the Issue #1
-  branch for review as an Issue #2 stack.
+- PR #13 is the Issue #1 stack; PR #14 is stacked on its branch for Issue #2.
+- Issue #3 is in progress on branch `stack/issue-3-djot-editor`.
+- Initial Issue #3 build is 834226 bytes uncompressed and 180696 bytes gzipped
+  for app.js, plus 2159 bytes of CSS.
 - Temporary lite-edit worktree `/tmp/lite-edit-prototype-spike` will be removed
   after npm dependencies finish and benchmarks are complete.
 - Record any further new Homebrew formulae/casks here before relying on them.
