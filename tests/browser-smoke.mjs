@@ -83,6 +83,28 @@ await page.waitForTimeout(150);
 const revealedSourceFonts = await page.locator(".dj-source").evaluateAll((elements) =>
   elements.map((element) => getComputedStyle(element).fontFamily),
 );
+const visualCursorDiagnostic = await page.evaluate(() => {
+  const editor = document.querySelector(".cm-content");
+  if (!editor) return null;
+  const lines = [...editor.querySelectorAll(".cm-line")];
+  const line = lines.find((item) => {
+    const rect = item.getBoundingClientRect();
+    return rect.top >= 38 && rect.bottom <= window.innerHeight;
+  });
+  if (!line) return null;
+  const rect = line.getBoundingClientRect();
+  const x = rect.left + Math.min(20, rect.width - 1);
+  const y = rect.top + rect.height / 2;
+  const hit = document.elementFromPoint(x, y);
+  return {
+    lineText: line.textContent,
+    x,
+    y,
+    hitTag: hit?.tagName,
+    hitClass: hit?.className,
+  };
+});
+await page.locator(".cm-scroller").evaluate((element) => { element.scrollTop = 0; });
 const headingFontSizes = await frame.locator("h1, h2, h3").evaluateAll((elements) =>
   elements.slice(0, 3).map((element) => getComputedStyle(element).fontSize),
 );
@@ -101,6 +123,7 @@ console.log(JSON.stringify({
   visualState,
   revealedSourceFonts,
   headingFontSizes,
+  visualCursorDiagnostic,
   cspAndSandboxErrors,
 }));
 
