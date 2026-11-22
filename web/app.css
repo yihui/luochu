@@ -1,7 +1,5 @@
-:root {
-  --fg: #1d1f21; --bg: #fff; --muted: #777; --accent: #2b6cb0;
-  --code-bg: #f4f4f4; --hl: #fff3a3;
-}
+@import "./document.css";
+:root { --bg: #fff; --accent: #2b6cb0; }
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
 body {
@@ -27,34 +25,6 @@ body {
 .cm-editor {
   height: 100%;
   .cm-scroller { font-family: ui-monospace, monospace; }
-}
-.visual {
-  .cm-content { font-family: system-ui, sans-serif; }
-  .dj-delim { text-decoration: none; }
-}
-.dj-delim { color: var(--muted); }
-.dj-emph { font-style: italic; }
-.dj-strong { font-weight: 700; }
-.dj-mark { background: var(--hl); }
-.dj-code_block, .dj-block_quote, .dj-div, .dj-table, .dj-definition_list, .dj-footnote {
-  background: rgba(127, 127, 127, 0.06);
-}
-.dj-block_quote { border-left: 3px solid var(--muted); padding-left: 0.5em; }
-.dj-chunk { background: rgba(43, 108, 176, 0.12); }
-.dj-chunkopt { color: var(--muted); }
-.dj-bullet { color: var(--accent); display: inline-block; width: 1.1em; }
-.dj-check { margin: 0 0.5em 0 0; }
-.dj-image img { max-height: 7.5em; vertical-align: middle; }
-.dj-hr-widget { display: block; border-top: 0.125em solid var(--muted); margin: 0.625em 0; }
-.dj-table-widget {
-  table { border-collapse: collapse; }
-  td, th { border: 1px solid var(--muted); padding: 0.1875em 0.5em; }
-}
-.dj-al-left { text-align: left; }
-.dj-al-center { text-align: center; }
-.dj-al-right { text-align: right; }
-#preview {
-  [data-startpos] { cursor: pointer; }
 }
 @media (max-width: 43.75em) {
   body main { grid-template-columns: 11.25em 1fr; grid-template-rows: 1fr 1fr; }
