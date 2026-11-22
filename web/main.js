@@ -13,7 +13,7 @@ function safeTableAlignmentHTML(html) {
     if (!style) continue;
     const match = /^text-align:\s*(left|center|right);?$/.exec(style.trim());
     if (match) {
-      cell.classList.add(`dj-align-${match[1]}`);
+      cell.classList.add(`dj-al-${match[1]}`);
       cell.removeAttribute("style");
     }
   }
