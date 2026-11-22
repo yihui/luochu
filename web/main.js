@@ -5,6 +5,21 @@ import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import demo from "./demo.dj";
 import { tokenize } from "./tokens.js";
 
+function safeTableAlignmentHTML(html) {
+  const template = document.createElement("template");
+  template.innerHTML = html;
+  for (const cell of template.content.querySelectorAll("th, td")) {
+    const style = cell.getAttribute("style");
+    if (!style) continue;
+    const match = /^text-align:\s*(left|center|right);?$/.exec(style.trim());
+    if (match) {
+      cell.classList.add(`dj-align-${match[1]}`);
+      cell.removeAttribute("style");
+    }
+  }
+  return template.innerHTML;
+}
+
 const setMode = StateEffect.define(), modeField = StateField.define({
   create: () => false,
   update(value, transaction) {
@@ -86,7 +101,7 @@ function buildDecorations(state) {
         const source = text.slice(from, to);
         const tableWidget = new Widget(`table:${source}`, () => {
           const wrapper = el("div", "dj-table-widget");
-          wrapper.innerHTML = renderHTML(parse(source));
+          wrapper.innerHTML = safeTableAlignmentHTML(renderHTML(parse(source)));
           return wrapper;
         });
         const start = doc.lineAt(from).from, end = doc.lineAt(to - 1).to;
@@ -126,7 +141,7 @@ let renderPending = false,
   dirty = false,
   diskConflict = false;
 function renderPreview(text) {
-  preview.innerHTML = renderHTML(parse(text, { sourcePositions: true }));
+  preview.innerHTML = safeTableAlignmentHTML(renderHTML(parse(text, { sourcePositions: true })));
 }
 function schedulePreview(text) {
   if (renderPending) return;

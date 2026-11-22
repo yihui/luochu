@@ -48,11 +48,17 @@ body {
 .dj-table-widget {
   table { border-collapse: collapse; }
   td, th { border: 1px solid var(--muted); padding: 0.1875em 0.5em; }
+  .dj-align-left { text-align: left; }
+  .dj-align-center { text-align: center; }
+  .dj-align-right { text-align: right; }
 }
 #preview {
   [data-startpos] { cursor: pointer; }
   img { max-width: 100%; }
   pre { background: var(--code-bg); padding: 0.625em; overflow: auto; }
+  .dj-align-left { text-align: left; }
+  .dj-align-center { text-align: center; }
+  .dj-align-right { text-align: right; }
 }
 @media (max-width: 43.75em) {
   body main { grid-template-columns: 11.25em 1fr; grid-template-rows: 1fr 1fr; }
