@@ -221,3 +221,13 @@ cd tools/djot-spike
 npm ci
 npm run spike
 ```
+
+Verified browser smoke command:
+
+```bash
+npm run test:browser
+```
+
+The browser smoke test starts and stops a real Luochu server, launches
+headless Chromium, verifies iframe rendering, and checks source/preview click
+and scroll synchronization plus CSP/sandbox console errors.

@@ -1,5 +1,6 @@
 import { blockKey, clampedScrollTop, sourceOffset } from "./preview-core.js";
 
+window.previewLoaded = true;
 const root = document.querySelector("#preview");
 let previousScroll = 0, syncingFromSource = false;
 

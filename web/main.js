@@ -136,9 +136,14 @@ const previewFrame = document.querySelector("#preview-frame");
 let previewReady = false,
   pendingPreviewHTML = "";
 let syncingPreviewScroll = false;
+const previewAssetURL = (name) => {
+  const url = new URL(`assets/${name}`, document.baseURI);
+  url.search = new URL(document.baseURI).search;
+  return url.toString();
+};
 previewFrame.srcdoc = `<!doctype html><html>
-<head><meta charset="utf-8"><link rel="stylesheet" href="assets/preview.css"></head>
-<body><main id="preview"></main><script src="assets/preview.js"></script></body>
+<head><meta charset="utf-8"><link rel="stylesheet" href="${previewAssetURL("preview.css")}"></head>
+<body><main id="preview"></main><script src="${previewAssetURL("preview.js")}"></script></body>
 </html>`;
 const fileTree = document.querySelector("#file-tree"),
   saveButton = document.querySelector("#save-file");
@@ -208,6 +213,7 @@ window.addEventListener("message", (event) => {
       event.data?.channel !== "luochu-preview") return;
   if (event.data.type === "ready") {
     previewReady = true;
+    previewFrame.dataset.ready = "true";
     if (pendingPreviewHTML) previewFrame.contentWindow.postMessage(
       { channel: "luochu-preview", type: "render", html: pendingPreviewHTML },
       "*",

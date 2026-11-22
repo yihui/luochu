@@ -154,11 +154,10 @@ func prefixOrSlash(prefix string) string {
 }
 
 func (s *Server) securityHeaders(w http.ResponseWriter) {
-	w.Header().Set("Content-Security-Policy", "default-src 'self'; base-uri 'none'; frame-ancestors 'none'; object-src 'none'")
+	w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; base-uri 'none'; frame-src 'self'; frame-ancestors 'self'; object-src 'none'")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
-	w.Header().Set("Cross-Origin-Embedder-Policy", "require-corp")
 }
 
 func (s *Server) validHost(r *http.Request) bool {
