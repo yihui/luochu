@@ -58,6 +58,18 @@ HTML is sanitized to remove scripts before rendering.
 External images are allowed, but their hosts can see your IP address and the
 requested image URL. The browser does not send the Luochu URL as a referrer.
 
+## Terminal
+
+Open the terminal and choose a shell or an installed Claude/Copilot CLI. It
+starts in the project directory and runs with your user permissions. Agent
+approval is handled by each CLI's normal permission prompts; the shell has
+unrestricted user-level access. Pasting a multiline editor selection asks for
+confirmation because it may run commands immediately.
+
+The terminal reconnects to the same process after a connection loss, replaying
+up to 256 KiB of output. A disconnected process is stopped after two minutes.
+Terminal support is currently unavailable on Windows.
+
 ## Test
 
 ```bash

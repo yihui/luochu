@@ -11,9 +11,9 @@ await esbuild.build({
   minify: true,
   sourcemap: false,
   define: { "process.env.NODE_ENV": '"production"' },
-  external: ["./math.js"],
+  external: ["./math.js", "./terminal.js"],
 });
-for (const name of ["app", "preview"]) {
+for (const name of ["app", "preview", "terminal"]) {
   await esbuild.build({
     entryPoints: [`web/${name}.css`],
     bundle: true,
@@ -21,6 +21,13 @@ for (const name of ["app", "preview"]) {
     minify: true,
   });
 }
+await esbuild.build({
+  entryPoints: ["web/terminal.js"],
+  bundle: true,
+  format: "esm",
+  outfile: "server/static/assets/terminal.js",
+  minify: true,
+});
 await esbuild.build({
   entryPoints: ["web/math.js"],
   bundle: true,
