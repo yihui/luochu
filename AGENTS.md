@@ -93,6 +93,9 @@ Before changing architecture, read these sources:
 - Validate Origin and Host. Keep the origin allowlist configurable.
 - Use relative URLs and mounted-prefix-safe WebSocket paths.
 - Never render untrusted document or agent output as HTML without sanitization.
+- Generated build output, bundles, source maps, cache directories, and
+  release archives are not committed to source control. They are produced for
+  local builds or packaged only in release/distribution artifacts.
 - Preview untrusted documents in a sandboxed iframe.
 - Dirty buffers and disk conflicts must never be overwritten silently.
 - Agent edits arrive as patches and require hunk-level accept/reject.
