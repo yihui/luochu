@@ -5,32 +5,19 @@ import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import demo from "./demo.dj";
 import { tokenize } from "./tokens.js";
 
-const setMode = StateEffect.define(),
-  modeField = StateField.define({
-    create: () => false,
-    update(value, transaction) {
-      for (const effect of transaction.effects) {
-        if (effect.is(setMode)) value = effect.value;
-      }
-      return value;
-    },
-  });
+const setMode = StateEffect.define(), modeField = StateField.define({
+  create: () => false,
+  update(value, transaction) {
+    for (const effect of transaction.effects) if (effect.is(setMode)) value = effect.value;
+    return value;
+  },
+});
 
 class Widget extends WidgetType {
-  constructor(key, make) {
-    super();
-    this.key = key;
-    this.make = make;
-  }
-  eq(other) {
-    return this.key === other.key;
-  }
-  toDOM(view) {
-    return this.make(view);
-  }
-  ignoreEvent() {
-    return false;
-  }
+  constructor(key, make) { super(); this.key = key; this.make = make; }
+  eq(other) { return this.key === other.key; }
+  toDOM(view) { return this.make(view); }
+  ignoreEvent() { return false; }
 }
 
 const el = (tag, className, text) => {
@@ -50,105 +37,50 @@ function checkbox(token) {
     input.checked = token.checked;
     input.onmousedown = (event) => {
       event.preventDefault();
-      view.dispatch({
-        changes: {
-          from: token.from + 1,
-          to: token.from + 2,
-          insert: token.checked ? " " : "x",
-        },
-      });
+      view.dispatch({ changes: {
+        from: token.from + 1, to: token.from + 2, insert: token.checked ? " " : "x",
+      } });
     };
     return input;
   });
 }
 
 function buildDecorations(state) {
-  const visual = state.field(modeField),
-    doc = state.doc,
-    text = doc.toString(),
-    selection = state.selection.main,
-    cursorLine = doc.lineAt(selection.head).number,
-    items = [],
-    lineSeen = new Set();
+  const visual = state.field(modeField), doc = state.doc, text = doc.toString();
+  const selection = state.selection.main, cursorLine = doc.lineAt(selection.head).number;
+  const items = [], lineSeen = new Set();
 
   for (const token of tokenize(text)) {
-    const from = token.from;
-    const to = Math.min(token.to, text.length);
+    const from = token.from, to = Math.min(token.to, text.length);
     if (to < from) continue;
-    const sameLine =
-      doc.lineAt(from).number === doc.lineAt(Math.max(from, to - 1)).number;
+    const sameLine = doc.lineAt(from).number === doc.lineAt(Math.max(from, to - 1)).number;
     const touches = selection.from <= to && selection.to >= from;
 
     if (token.kind === "line") {
-      const first = doc.lineAt(from).number;
-      const last = doc.lineAt(Math.max(from, to - 1)).number;
+      const first = doc.lineAt(from).number, last = doc.lineAt(Math.max(from, to - 1)).number;
       for (let line = first; line <= last; line++) {
         const key = `${token.cls}:${line}`;
         if (lineSeen.has(key)) continue;
         lineSeen.add(key);
-        items.push({
-          from: doc.line(line).from,
-          to: doc.line(line).from,
-          decoration: Decoration.line({ class: token.cls }),
-        });
+        items.push({ from: doc.line(line).from, to: doc.line(line).from,
+          decoration: Decoration.line({ class: token.cls }) });
       }
     } else if (token.kind === "delim") {
-      if (
-        visual &&
-        sameLine &&
-        doc.lineAt(from).number !== cursorLine &&
-        to > from
-      ) {
+      if (visual && sameLine && doc.lineAt(from).number !== cursorLine && to > from)
         items.push({ from, to, decoration: Decoration.replace({}) });
-      } else if (to > from) {
-        items.push({
-          from,
-          to,
-          decoration: Decoration.mark({ class: "dj-delim" }),
-        });
-      }
+      else if (to > from)
+        items.push({ from, to, decoration: Decoration.mark({ class: "dj-delim" }) });
     } else if (token.kind === "bullet") {
-      if (visual && doc.lineAt(from).number !== cursorLine) {
-        items.push({
-          from,
-          to,
-          decoration: Decoration.replace({ widget: bullet }),
-        });
-      } else {
-        items.push({
-          from,
-          to,
-          decoration: Decoration.mark({ class: "dj-delim" }),
-        });
-      }
+      if (visual && doc.lineAt(from).number !== cursorLine)
+        items.push({ from, to, decoration: Decoration.replace({ widget: bullet }) });
+      else items.push({ from, to, decoration: Decoration.mark({ class: "dj-delim" }) });
     } else if (token.kind === "check") {
-      if (visual) {
-        items.push({
-          from,
-          to,
-          decoration: Decoration.replace({ widget: checkbox(token) }),
-        });
-      } else {
-        items.push({
-          from,
-          to,
-          decoration: Decoration.mark({ class: "dj-checkbox" }),
-        });
-      }
+      if (visual)
+        items.push({ from, to, decoration: Decoration.replace({ widget: checkbox(token) }) });
+      else items.push({ from, to, decoration: Decoration.mark({ class: "dj-checkbox" }) });
     } else if (token.kind === "hr") {
-      if (visual && !touches) {
-        items.push({
-          from,
-          to,
-          decoration: Decoration.replace({ widget: hr }),
-        });
-      } else {
-        items.push({
-          from,
-          to,
-          decoration: Decoration.mark({ class: "dj-delim" }),
-        });
-      }
+      if (!touches) items.push({ from, to, decoration: Decoration.replace({ widget: hr }) });
+      else items.push({ from, to, decoration: Decoration.mark({ class: "dj-delim" }) });
     } else if (token.kind === "table") {
       if (visual && !touches) {
         const source = text.slice(from, to);
@@ -157,56 +89,30 @@ function buildDecorations(state) {
           wrapper.innerHTML = renderHTML(parse(source));
           return wrapper;
         });
-        const start = doc.lineAt(from).from;
-        const end = doc.lineAt(to - 1).to;
-        items.push({
-          from: start,
-          to: end,
-          decoration: Decoration.replace({ widget: tableWidget, block: true }),
-        });
+        const start = doc.lineAt(from).from, end = doc.lineAt(to - 1).to;
+        items.push({ from: start, to: end,
+          decoration: Decoration.replace({ widget: tableWidget, block: true }) });
       }
     } else if (token.kind === "image") {
       if (visual && !touches) {
-        const imageWidget = new Widget(
-          `image:${token.src}:${token.alt}`,
-          () => {
-            const wrapper = el("span", "dj-image");
-            const image = el("img");
-            image.src = token.src;
-            image.alt = token.alt;
-            wrapper.append(image);
-            return wrapper;
-          },
-        );
-        items.push({
-          from,
-          to,
-          decoration: Decoration.replace({ widget: imageWidget }),
+        const imageWidget = new Widget(`image:${token.src}:${token.alt}`, () => {
+          const wrapper = el("span", "dj-image"), image = el("img");
+          image.src = token.src; image.alt = token.alt; wrapper.append(image);
+          return wrapper;
         });
+        items.push({ from, to, decoration: Decoration.replace({ widget: imageWidget }) });
       }
-    } else if (to > from) {
-      items.push({
-        from,
-        to,
-        decoration: Decoration.mark({ class: token.cls }),
-      });
-    }
+    } else if (to > from)
+      items.push({ from, to, decoration: Decoration.mark({ class: token.cls }) });
   }
-
-  return Decoration.set(
-    items.map((item) => item.decoration.range(item.from, item.to)),
-    true,
-  );
+  return Decoration.set(items.map((item) => item.decoration.range(item.from, item.to)), true);
 }
 
 const decoField = StateField.define({
   create: buildDecorations,
   update(value, transaction) {
-    return transaction.docChanged ||
-      transaction.selection ||
-      transaction.effects.length
-      ? buildDecorations(transaction.state)
-      : value;
+    return transaction.docChanged || transaction.selection || transaction.effects.length
+      ? buildDecorations(transaction.state) : value;
   },
   provide: (field) => EditorView.decorations.from(field),
 });
@@ -219,10 +125,7 @@ function renderPreview(text) {
 function schedulePreview(text) {
   if (renderPending) return;
   renderPending = true;
-  requestAnimationFrame(() => {
-    renderPending = false;
-    renderPreview(text);
-  });
+  requestAnimationFrame(() => { renderPending = false; renderPreview(text); });
 }
 
 const view = new EditorView({
@@ -230,10 +133,7 @@ const view = new EditorView({
   state: EditorState.create({
     doc: demo,
     extensions: [
-      history(),
-      keymap.of([...defaultKeymap, ...historyKeymap]),
-      modeField,
-      decoField,
+      history(), keymap.of([...defaultKeymap, ...historyKeymap]), modeField, decoField,
       EditorView.lineWrapping,
       EditorView.updateListener.of((update) => {
         if (update.docChanged) schedulePreview(update.state.doc.toString());
@@ -258,8 +158,7 @@ view.scrollDOM.addEventListener("scroll", () => {
   let target = null;
   for (const element of preview.querySelectorAll("[data-startpos]")) {
     const startLine = Number(element.dataset.startpos.split(":")[0]);
-    if (startLine <= line) target = element;
-    else break;
+    if (startLine <= line) target = element; else break;
   }
   if (target) previewPane.scrollTop = target.offsetTop - previewPane.offsetTop;
 });
@@ -268,6 +167,5 @@ preview.addEventListener("click", (event) => {
   const element = event.target.closest("[data-startpos]");
   if (!element) return;
   const sourceOffset = Number(element.dataset.startpos.split(":")[2]);
-  view.dispatch({ selection: { anchor: sourceOffset }, scrollIntoView: true });
-  view.focus();
+  view.dispatch({ selection: { anchor: sourceOffset }, scrollIntoView: true }); view.focus();
 });

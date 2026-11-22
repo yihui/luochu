@@ -20,6 +20,9 @@ JavaScript source style:
 - Use native CSS nesting when a selector is structurally grouped, such as
   layout children, state variants, widget internals, preview elements, and
   responsive overrides.
+- Keep source compact. Put simple declarations, selectors, arguments, and
+  short objects on one line; break a line only when it exceeds roughly 100
+  characters or nesting/semantics require it.
 
 1. Work one issue at a time. Read the issue before editing:
    `gh issue view <number> --repo yihui/luochu`
