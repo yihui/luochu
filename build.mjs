@@ -1,20 +1,20 @@
-import * as esbuild from 'esbuild'
-import { mkdir } from 'node:fs/promises'
+import * as esbuild from "esbuild";
+import { mkdir } from "node:fs/promises";
 
-await mkdir('server/static/assets', { recursive: true })
+await mkdir("server/static/assets", { recursive: true });
 await esbuild.build({
-  entryPoints: ['web/main.js'],
+  entryPoints: ["web/main.js"],
   bundle: true,
-  format: 'iife',
-  outfile: 'server/static/assets/app.js',
-  loader: { '.dj': 'text' },
+  format: "iife",
+  outfile: "server/static/assets/app.js",
+  loader: { ".dj": "text" },
   minify: true,
   sourcemap: false,
-  define: { 'process.env.NODE_ENV': '"production"' },
-})
+  define: { "process.env.NODE_ENV": '"production"' },
+});
 await esbuild.build({
-  entryPoints: ['web/app.css'],
+  entryPoints: ["web/app.css"],
   bundle: true,
-  outfile: 'server/static/assets/app.css',
+  outfile: "server/static/assets/app.css",
   minify: true,
-})
+});
