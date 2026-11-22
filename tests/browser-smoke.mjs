@@ -72,6 +72,21 @@ await frame.locator("html").evaluate((html) => {
 await page.waitForTimeout(200);
 const sourceScrollAfterPreview = await sourceScroller.evaluate((element) => element.scrollTop);
 
+await page.locator("#mode-toggle").evaluate((button) => button.click());
+await page.waitForTimeout(300);
+const visualState = await page.locator(".cm-editor").evaluate((element) => ({
+  visual: element.classList.contains("visual"),
+  scrollerFont: getComputedStyle(element.querySelector(".cm-scroller")).fontFamily,
+}));
+await frame.locator("[data-startpos]").nth(40).click();
+await page.waitForTimeout(150);
+const revealedSourceFonts = await page.locator(".dj-source").evaluateAll((elements) =>
+  elements.map((element) => getComputedStyle(element).fontFamily),
+);
+const headingFontSizes = await frame.locator("h1, h2, h3").evaluateAll((elements) =>
+  elements.slice(0, 3).map((element) => getComputedStyle(element).fontSize),
+);
+
 const cspAndSandboxErrors = errors.filter((error) =>
   error.includes("Content Security Policy") ||
   error.includes("escape its sandboxing"),
@@ -83,6 +98,9 @@ console.log(JSON.stringify({
   sourceAfterClick,
   previewScrollAfterSource,
   sourceScrollAfterPreview,
+  visualState,
+  revealedSourceFonts,
+  headingFontSizes,
   cspAndSandboxErrors,
 }));
 

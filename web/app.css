@@ -26,6 +26,8 @@ body {
   height: 100%;
   .cm-scroller { font-family: ui-monospace, monospace; }
 }
+.cm-editor.visual .cm-scroller { font-family: system-ui, sans-serif; }
+.cm-editor.visual .dj-source { font-family: ui-monospace, monospace; }
 @media (max-width: 43.75em) {
   body main { grid-template-columns: 11.25em 1fr; grid-template-rows: 1fr 1fr; }
   #file-tree { grid-row: 1 / 3; }

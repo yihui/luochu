@@ -2,7 +2,7 @@ import { blockKey, clampedScrollTop, sourceOffset } from "./preview-core.js";
 
 window.previewLoaded = true;
 const root = document.querySelector("#preview");
-let previousScroll = 0, syncingFromSource = false;
+let previousScroll = 0, syncingFromSource = false, previewScrollTimer = null;
 
 function sanitizedTemplate(html) {
   const template = document.createElement("template");
@@ -62,23 +62,27 @@ window.addEventListener("message", (event) => {
       const maxScroll = document.scrollingElement.scrollHeight - window.innerHeight;
       document.scrollingElement.scrollTop =
         clampedScrollTop(elementTop, event.data.viewportY, Math.max(0, maxScroll));
-      requestAnimationFrame(() => { syncingFromSource = false; });
+      setTimeout(() => { syncingFromSource = false; }, 300);
     }
   }
 });
 
 document.addEventListener("scroll", () => {
   if (syncingFromSource) return;
-  if (document.scrollingElement.scrollTop === previousScroll) return;
+  clearTimeout(previewScrollTimer);
+  previewScrollTimer = setTimeout(() => {
+    if (syncingFromSource) return;
+    if (document.scrollingElement.scrollTop === previousScroll) return;
   previousScroll = document.scrollingElement.scrollTop;
   let target = null;
-  let targetTop = 0;
+  let bestDistance = Infinity;
   for (const element of root.querySelectorAll("[data-startpos]")) {
     const rect = element.getBoundingClientRect();
     if (rect.bottom <= 0) continue;
-    if (!target || Math.abs(rect.top) < targetTop) {
+    const distance = Math.abs(rect.top);
+    if (distance < bestDistance) {
       target = element;
-      targetTop = Math.abs(rect.top);
+      bestDistance = distance;
     }
   }
   const offset = target ? sourceOffset(target) : null;
@@ -87,6 +91,7 @@ document.addEventListener("scroll", () => {
       offset, viewportY: target.getBoundingClientRect().top },
     "*",
   );
+  }, 120);
 }, true);
 
 root.addEventListener("click", (event) => {

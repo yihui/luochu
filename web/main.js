@@ -84,7 +84,7 @@ function buildDecorations(state) {
       if (visual && sameLine && doc.lineAt(from).number !== cursorLine && to > from)
         items.push({ from, to, decoration: Decoration.replace({}) });
       else if (to > from)
-        items.push({ from, to, decoration: Decoration.mark({ class: "dj-delim" }) });
+        items.push({ from, to, decoration: Decoration.mark({ class: "dj-delim dj-source" }) });
     } else if (token.kind === "bullet") {
       if (visual && doc.lineAt(from).number !== cursorLine)
         items.push({ from, to, decoration: Decoration.replace({ widget: bullet }) });
@@ -136,6 +136,8 @@ const previewFrame = document.querySelector("#preview-frame");
 let previewReady = false,
   pendingPreviewHTML = "";
 let syncingPreviewScroll = false;
+let sourceScrollTimer = null;
+let sourceScrollLockUntil = 0;
 const previewAssetURL = (name) => {
   const url = new URL(`assets/${name}`, document.baseURI);
   url.search = new URL(document.baseURI).search;
@@ -195,17 +197,21 @@ const applyMode = (visual) => {
 toggle.addEventListener("click", () => applyMode(!view.state.field(modeField)));
 
 view.scrollDOM.addEventListener("scroll", () => {
-  if (syncingPreviewScroll) return;
-  const top = view.lineBlockAtHeight(view.scrollDOM.scrollTop).from;
-  const line = view.state.doc.lineAt(top).number;
-  const offset = view.state.doc.line(line).from;
-  const coords = view.coordsAtPos(offset);
-  const frameRect = previewFrame.getBoundingClientRect();
-  const viewportY = coords ? Math.max(0, coords.top - frameRect.top) : 0;
-  if (previewReady) previewFrame.contentWindow.postMessage(
-    { channel: "luochu-preview", type: "scroll", offset, viewportY },
-    "*",
-  );
+  if (syncingPreviewScroll || performance.now() < sourceScrollLockUntil) return;
+  clearTimeout(sourceScrollTimer);
+  sourceScrollTimer = setTimeout(() => {
+    if (syncingPreviewScroll || performance.now() < sourceScrollLockUntil) return;
+    const top = view.lineBlockAtHeight(view.scrollDOM.scrollTop).from;
+    const line = view.state.doc.lineAt(top).number;
+    const offset = view.state.doc.line(line).from;
+    const coords = view.coordsAtPos(offset);
+    const scrollRect = view.scrollDOM.getBoundingClientRect();
+    const viewportY = coords ? coords.top - scrollRect.top : 0;
+    if (previewReady) previewFrame.contentWindow.postMessage(
+      { channel: "luochu-preview", type: "scroll", offset, viewportY },
+      "*",
+    );
+  }, 120);
 });
 
 window.addEventListener("message", (event) => {
@@ -223,16 +229,17 @@ window.addEventListener("message", (event) => {
     const offset = event.data.offset;
     if (!Number.isFinite(offset)) return;
     syncingPreviewScroll = true;
+    sourceScrollLockUntil = performance.now() + 300;
     view.dispatch({ selection: { anchor: offset } });
     requestAnimationFrame(() => {
       const coords = view.coordsAtPos(offset);
       if (!coords) return;
-      const frameRect = previewFrame.getBoundingClientRect();
-      const desiredTop = frameRect.top + (event.data.viewportY || 0);
+      const scrollRect = view.scrollDOM.getBoundingClientRect();
+      const desiredTop = scrollRect.top + (event.data.viewportY || 0);
       const delta = coords.top - desiredTop;
       view.scrollDOM.scrollTop += delta;
       if (event.data.type === "source-click") view.focus();
-      requestAnimationFrame(() => { syncingPreviewScroll = false; });
+      setTimeout(() => { syncingPreviewScroll = false; }, 180);
     });
   }
 });
