@@ -62,6 +62,10 @@ issues and this section as the source of truth.
 - Issue #3 is in progress on branch `stack/issue-3-djot-editor`.
 - Initial Issue #3 build is 834226 bytes uncompressed and 180696 bytes gzipped
   for app.js, plus 2159 bytes of CSS.
+- Frontend build correction: generated `server/static/assets/*` files are
+  ignored and not committed. Esbuild output is minified without source maps;
+  the corrected initial app bundle is 353 KB uncompressed / 112784 bytes gzip,
+  plus 1.7 KB CSS. Source maps are development tools, not runtime assets.
 - Temporary lite-edit worktree `/tmp/lite-edit-prototype-spike` will be removed
   after npm dependencies finish and benchmarks are complete.
 - Record any further new Homebrew formulae/casks here before relying on them.

@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
+    "server": "npm run build && go run ./cmd/luochu",
     "test": "node --test tests/*.test.mjs",
     "spike": "npm --prefix tools/djot-spike run spike"
   },
