@@ -11,6 +11,22 @@ Repository: https://github.com/yihui/luochu
 
 ## Working with implementation steps
 
+JavaScript source style:
+
+- Use semicolons.
+- Combine adjacent `const` declarations into comma-separated declarations.
+  Do not split them merely for minifier assumptions; generated output may be
+  minified separately.
+- Use native CSS nesting when a selector is structurally grouped, such as
+  layout children, state variants, widget internals, preview elements, and
+  responsive overrides.
+- Keep source compact. Put simple declarations, selectors, arguments, and
+  short objects on one line; break a line only when it exceeds roughly 100
+  characters or nesting/semantics require it.
+- Prefer em-based CSS lengths over px.
+- Avoid `!important`; use specificity or cascade order unless an override
+  is genuinely unavoidable.
+
 1. Work one issue at a time. Read the issue before editing:
    `gh issue view <number> --repo yihui/luochu`
 2. Respect dependencies. Do not start a later issue while a prerequisite is
@@ -27,20 +43,20 @@ Repository: https://github.com/yihui/luochu
 
 ## Progress
 
-| Step | Issue | Status | Outcome / handoff |
-|---|---|---:|---|
-| Architecture and feasibility spikes | [#1](https://github.com/yihui/luochu/issues/1) | PR [#13](https://github.com/yihui/luochu/pull/13) | Findings and benchmark complete |
-| Go server and Host API | [#2](https://github.com/yihui/luochu/issues/2) | In progress | Stacked on #13; Go skeleton and tests |
-| CodeMirror and Djot source/visual core | [#3](https://github.com/yihui/luochu/issues/3) | Open | Blocked by #2 |
-| File tree, watching, conflicts, and SPA storage | [#4](https://github.com/yihui/luochu/issues/4) | Open | Blocked by #2-#3 |
-| Djot preview and visual widgets | [#5](https://github.com/yihui/luochu/issues/5) | Open | Blocked by #3-#4 |
-| Terminal and agent CLIs | [#6](https://github.com/yihui/luochu/issues/6) | Open | Blocked by #2-#4 |
-| Git and patch/diff review | [#7](https://github.com/yihui/luochu/issues/7) | Open | Blocked by #2-#4 |
-| Native Djot chunk execution and cache | [#8](https://github.com/yihui/luochu/issues/8) | Open | Blocked by #1-#3 |
-| Browser Wasm runtimes | [#9](https://github.com/yihui/luochu/issues/9) | Open | Blocked by #8 |
-| Export, document filters, and migration | [#10](https://github.com/yihui/luochu/issues/10) | Open | Blocked by #5-#8 |
-| Proxy and desktop validation | [#11](https://github.com/yihui/luochu/issues/11) | Open | Blocked by #2-#9 |
-| Optional collaboration | [#12](https://github.com/yihui/luochu/issues/12) | Open | Last; blocked by #2-#11 |
+| Step                                            | Issue                                            |                                            Status | Outcome / handoff                      |
+| ----------------------------------------------- | ------------------------------------------------ | ------------------------------------------------: | -------------------------------------- |
+| Architecture and feasibility spikes             | [#1](https://github.com/yihui/luochu/issues/1)   | PR [#13](https://github.com/yihui/luochu/pull/13) | Findings and benchmark complete        |
+| Go server and Host API                          | [#2](https://github.com/yihui/luochu/issues/2)   | PR [#14](https://github.com/yihui/luochu/pull/14) | Stacked on #13; Go skeleton and tests  |
+| CodeMirror and Djot source/visual core          | [#3](https://github.com/yihui/luochu/issues/3)   |                                       In progress | Stacked on #14; editor shell and tests |
+| File tree, watching, conflicts, and SPA storage | [#4](https://github.com/yihui/luochu/issues/4)   |                                              Open | Blocked by #2-#3                       |
+| Djot preview and visual widgets                 | [#5](https://github.com/yihui/luochu/issues/5)   |                                              Open | Blocked by #3-#4                       |
+| Terminal and agent CLIs                         | [#6](https://github.com/yihui/luochu/issues/6)   |                                              Open | Blocked by #2-#4                       |
+| Git and patch/diff review                       | [#7](https://github.com/yihui/luochu/issues/7)   |                                              Open | Blocked by #2-#4                       |
+| Native Djot chunk execution and cache           | [#8](https://github.com/yihui/luochu/issues/8)   |                                              Open | Blocked by #1-#3                       |
+| Browser Wasm runtimes                           | [#9](https://github.com/yihui/luochu/issues/9)   |                                              Open | Blocked by #8                          |
+| Export, document filters, and migration         | [#10](https://github.com/yihui/luochu/issues/10) |                                              Open | Blocked by #5-#8                       |
+| Proxy and desktop validation                    | [#11](https://github.com/yihui/luochu/issues/11) |                                              Open | Blocked by #2-#9                       |
+| Optional collaboration                          | [#12](https://github.com/yihui/luochu/issues/12) |                                              Open | Last; blocked by #2-#11                |
 
 **Current state:** No implementation work or repository scaffold is present in
 the Luochu checkout yet. Issue #1 is the first step. All prior implementation
@@ -62,6 +78,10 @@ issues and this section as the source of truth.
 - Issue #3 is in progress on branch `stack/issue-3-djot-editor`.
 - Initial Issue #3 build is 834226 bytes uncompressed and 180696 bytes gzipped
   for app.js, plus 2159 bytes of CSS.
+- Frontend build correction: generated `server/static/assets/*` files are
+  ignored and not committed. Esbuild output is minified without source maps;
+  the corrected initial app bundle is 353 KB uncompressed / 112784 bytes gzip,
+  plus 1.7 KB CSS. Source maps are development tools, not runtime assets.
 - Issue #4 implementation completed a project-root file API and browser tree:
   live list/read/rename/conflict-write checks passed.
 - PR stack correction (2026-11-21):
@@ -99,6 +119,9 @@ Before changing architecture, read these sources:
 - Validate Origin and Host. Keep the origin allowlist configurable.
 - Use relative URLs and mounted-prefix-safe WebSocket paths.
 - Never render untrusted document or agent output as HTML without sanitization.
+- Generated build output, bundles, source maps, cache directories, and
+  release archives are not committed to source control. They are produced for
+  local builds or packaged only in release/distribution artifacts.
 - Preview untrusted documents in a sandboxed iframe.
 - Dirty buffers and disk conflicts must never be overwritten silently.
 - Agent edits arrive as patches and require hunk-level accept/reject.

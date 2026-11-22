@@ -1,0 +1,16 @@
+# Luochu Djot demo
+
+Write _emphasized text_, *strong text*, and $`x^2 + y^2`.
+
+- [ ] Open task
+- [x] Completed task
+
+| Left | Right |
+|:-----|------:|
+| A | B |
+
+``` r
+#| label: fig-demo
+#| echo: false
+plot(1:10)
+```
