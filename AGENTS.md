@@ -95,6 +95,9 @@ JavaScript source style:
   zero-height CodeMirror block replacements; selecting their owning block
   reveals the source. Preserve actual blank lines, source offsets, nesting,
   and clickable placeholders for empty blocks when changing this behavior.
+- Raw HTML block widgets use normal HTML whitespace instead of inheriting
+  CodeMirror's `pre-wrap`; otherwise the raw block's trailing newline renders
+  as an extra blank line. Nested `<pre>` elements retain their own whitespace.
 - Blockquote line decorations exclude the following unquoted blank line.
   The demo image uses Djot's `{title="..."}` attribute, not a quoted title
   inside the destination. Both editor and preview display the R logo.

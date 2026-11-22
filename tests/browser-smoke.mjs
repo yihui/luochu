@@ -492,6 +492,58 @@ try {
   await page.getByText("Empty code block", { exact: true }).click();
   if (!(await page.locator(".cm-content").textContent()).includes("```r"))
     throw new Error("Empty unclosed code block did not reveal its fence");
+
+  const rawSpacing = [
+    "Baseline first", "", "Baseline second", "", "``` =html",
+    '<div class="raw">passed through for HTML only</div>', "```", "", "## Divs", "",
+    "After raw block.",
+  ].join("\n");
+  await page.evaluate((text) => {
+    const view = window.__LUOCHU_EDITOR_VIEW__;
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text },
+      selection: { anchor: 0 } });
+  }, rawSpacing);
+  const rawGeometry = await page.evaluate(() => {
+    const lines = [...document.querySelectorAll(".cm-line")],
+      first = lines.find((line) => line.textContent === "Baseline first"),
+      second = lines.find((line) => line.textContent === "Baseline second"),
+      heading = lines.find((line) => line.textContent.includes("Divs")),
+      raw = document.querySelector("div.dj-raw-html");
+    return {
+      lineHeight: first.getBoundingClientRect().height,
+      rawHeight: raw.getBoundingClientRect().height,
+      baselineGap: second.getBoundingClientRect().top - first.getBoundingClientRect().bottom,
+      rawGap: heading.getBoundingClientRect().top - raw.getBoundingClientRect().bottom,
+    };
+  });
+  if (Math.abs(rawGeometry.rawHeight - rawGeometry.lineHeight) > 2 ||
+    Math.abs(rawGeometry.rawGap - rawGeometry.baselineGap) > 2)
+    throw new Error(`Raw HTML block has extra whitespace: ${JSON.stringify(rawGeometry)}`);
+  await clickText("After raw block.", 5);
+  await page.locator(".dj-raw-html .raw").click();
+  if (!(await page.locator(".cm-content").textContent()).includes('``` =html'))
+    throw new Error("Clicking raw HTML did not reveal its source");
+  await clickText("After raw block.", 5);
+  await clickText("Divs", 2);
+
+  const multilineRaw = [
+    "Start", "", "``` =html", '<div class="first">First</div>',
+    '<div class="second">Second</div>', "<pre>  a\n  b</pre>", "```", "", "End",
+  ].join("\n");
+  await page.evaluate((text) => {
+    const view = window.__LUOCHU_EDITOR_VIEW__;
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text },
+      selection: { anchor: 0 } });
+  }, multilineRaw);
+  const rawContent = await page.locator("div.dj-raw-html").evaluate((raw) => {
+    const first = raw.querySelector(".first"), second = raw.querySelector(".second"),
+      pre = raw.querySelector("pre");
+    return { gap: second.getBoundingClientRect().top - first.getBoundingClientRect().bottom,
+      whiteSpace: getComputedStyle(pre).whiteSpace, text: pre.textContent };
+  });
+  if (Math.abs(rawContent.gap) > 2 || rawContent.whiteSpace !== "pre" ||
+    rawContent.text !== "  a\n  b")
+    throw new Error(`Raw HTML whitespace was not rendered correctly: ${JSON.stringify(rawContent)}`);
   if (errors.length) throw new Error(errors.join("\n"));
   console.log("Browser smoke: visual widgets, sanitized HTML, cursor clicks and proxy paths passed");
 } finally {
