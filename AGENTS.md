@@ -15,8 +15,8 @@ art and current implementation.
   Issue #9 currently depends on #8's execution protocol and cache; reconcile
   that dependency when starting #9 rather than claiming native-first and
   shared-protocol support before it exists.
-- #6 is in progress on `feature/issue-6-terminal`
-  ([draft PR #24](https://github.com/yihui/luochu/pull/24)). Chromium and Go
+- #6 terminal foundation was merged in
+  [PR #24](https://github.com/yihui/luochu/pull/24). Chromium and Go
   tests cover shell I/O, reconnect, resize, authorization, and guarded paste.
   The terminal opens a shell using xpty (Unix PTY or Windows ConPTY); users
   launch agent CLIs themselves. Windows Go terminal tests run on GitHub Actions;

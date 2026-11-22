@@ -3,7 +3,29 @@
 Luochu is a small, browser-first code and Djot document editor with a local Go
 server.
 
-## Requirements
+## Download
+
+Install a prerelease on Linux or macOS with:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yihui/luochu/main/install.sh | sh -s -- v0.1.0-alpha.1
+~/.local/bin/luochu -project /path/to/project -open
+```
+
+On Windows, run in PowerShell:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/yihui/luochu/main/install.ps1))) -Version v0.1.0-alpha.1
+& "$env:LOCALAPPDATA\Programs\Luochu\luochu.exe" -project . -open
+```
+
+Omit the version to install the latest stable release. The installers verify
+the release checksum and need no Go or Node installation. On a remote
+RStudio Server machine, run the Linux binary without `-open` and access it
+through the server's port proxy. Proxy compatibility has not yet been
+verified and may require additional configuration or fixes.
+
+## Development requirements
 
 - Go 1.25 or newer
 - Node.js and npm
@@ -89,3 +111,10 @@ npm run server
 `npm run server` rebuilds browser assets before starting the Go server.
 Generated assets under `server/static/assets/` are ignored and should not be
 committed.
+
+## Releases
+
+Push a version tag such as `v0.1.0` to build, test, and publish archives
+automatically. Tags containing a hyphen, such as `v0.1.0-alpha.1`, create
+prereleases. The Release workflow can also be run manually to build artifacts
+without publishing. The separate `SHA256SUMS` file verifies the archives.
