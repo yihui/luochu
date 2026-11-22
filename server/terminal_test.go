@@ -23,9 +23,6 @@ func TestTerminalAuthenticationAndReconnect(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := s.newTerminal("arbitrary"); err == nil {
-		t.Fatal("arbitrary terminal command was accepted")
-	}
 	t.Cleanup(func() { _ = s.watcher.Close() })
 	server := httptest.NewServer(s)
 	defer server.Close()
@@ -37,10 +34,11 @@ func TestTerminalAuthenticationAndReconnect(t *testing.T) {
 		header http.Header
 		status int
 	}{
-		{base + "?command=shell", origin, http.StatusUnauthorized},
-		{base + "?token=test-token&command=shell", http.Header{"Origin": []string{"https://attacker.invalid"}}, http.StatusForbidden},
-		{base + "?token=test-token&command=shell", nil, http.StatusForbidden},
-		{base + "?token=test-token&command=shell", http.Header{"Origin": []string{server.URL}, "Host": []string{"attacker.invalid"}}, http.StatusBadRequest},
+		{base, origin, http.StatusUnauthorized},
+		{base + "?token=test-token", http.Header{"Origin": []string{"https://attacker.invalid"}}, http.StatusForbidden},
+		{base + "?token=test-token", nil, http.StatusForbidden},
+		{base + "?token=test-token", http.Header{"Origin": []string{server.URL}, "Host": []string{"attacker.invalid"}}, http.StatusBadRequest},
+		{base + "?token=test-token&command=copilot", origin, http.StatusBadRequest},
 		{"ws://" + host.Host + "/api/terminal?token=test-token", origin, http.StatusNotFound},
 	} {
 		conn, response, err := websocket.DefaultDialer.Dial(test.target, test.header)
@@ -87,7 +85,7 @@ func TestTerminalAuthenticationAndReconnect(t *testing.T) {
 		}
 
 	}
-	conn := connect(base + "?token=test-token&command=shell")
+	conn := connect(base + "?token=test-token")
 	id := readSession(conn)
 	if err := conn.WriteMessage(websocket.BinaryMessage,
 		[]byte("export LUOCHU_TEST_STATE=kept; printf 'ready:%s\\n' \"$LUOCHU_TEST_STATE\"\n")); err != nil {
@@ -155,7 +153,7 @@ func TestTerminalAuthenticationAndReconnect(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	conn = connect(base + "?token=test-token&command=shell")
+	conn = connect(base + "?token=test-token")
 	badID := readSession(conn)
 	s.terminalMu.Lock()
 	badSession := s.terminals[badID]

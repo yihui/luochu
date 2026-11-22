@@ -18,6 +18,7 @@ art and current implementation.
 - #6 is in progress on `feature/issue-6-terminal`
   ([draft PR #24](https://github.com/yihui/luochu/pull/24)). Chromium and Go
   tests cover shell I/O, reconnect, resize, authorization, and guarded paste.
+  The terminal opens a shell; users launch agent CLIs themselves.
   The error helper remains to implement. Real interactive Claude/Copilot and
   RStudio proxy tests remain outstanding; Claude was not installed here.
 - [#5](https://github.com/yihui/luochu/issues/5): Djot document experience;
@@ -81,7 +82,7 @@ art and current implementation.
 - Ship one Go server binary with embedded UI. Generated assets, source maps,
   caches, and release archives are not committed. Keep the initial JS under
   roughly 200 KB compressed and lazy-load expensive functionality.
-- Current initial app JS: 132,921 bytes gzip; lazy terminal: 72,549 bytes JS
+- Current initial app JS: 132,838 bytes gzip; lazy terminal: 72,531 bytes JS
   and 1,733 bytes CSS gzip. Lazy KaTeX: 77,403 bytes JS and 4,168 bytes CSS
   gzip, plus fonts; the demo loads math at startup. Cold/warm timings remain
   unmeasured; see #22.

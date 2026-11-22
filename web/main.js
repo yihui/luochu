@@ -269,7 +269,6 @@ saveButton.onclick = async () => {
 loadTree()
 
 const terminalControls = document.querySelector('#terminal-controls'),
-  terminalCommand = document.querySelector('#terminal-command'),
   terminalToggle = document.querySelector('#terminal-toggle'),
   terminalPaste = document.querySelector('#terminal-paste'),
   terminalPane = document.querySelector('#terminal-pane'),
@@ -278,14 +277,8 @@ let terminalSession = null, terminalAssets = null;
 fetch(apiUrl('api/capabilities'), {credentials: 'same-origin'}).then((response) => {
   if (!response.ok) throw new Error(`Capability request failed: ${response.status}`);
   return response.json();
-}).then(({capabilities, terminalCommands}) => {
+}).then(({capabilities}) => {
   if (!capabilities.terminal) return;
-  for (const command of terminalCommands) {
-    const option = document.createElement('option');
-    option.value = command;
-    option.textContent = command === 'shell' ? 'Shell' : command === 'claude' ? 'Claude' : 'Copilot';
-    terminalCommand.append(option);
-  }
   terminalControls.hidden = false;
 }).catch((error) => console.error('Could not load capabilities:', error));
 
@@ -295,9 +288,8 @@ terminalToggle.onclick = async () => {
     terminalSession = null;
     terminalPane.hidden = true;
     document.querySelector('main').classList.remove('terminal-open');
-    terminalCommand.disabled = false;
     terminalPaste.disabled = true;
-    terminalToggle.textContent = 'Open';
+    terminalToggle.textContent = 'Open terminal';
     return;
   }
   terminalToggle.disabled = true;
@@ -318,9 +310,7 @@ terminalToggle.onclick = async () => {
         .catch((error) => { link.remove(); terminalAssets = null; throw error; });
     }
     const module = await terminalAssets;
-    terminalSession = module.openTerminal(document.querySelector('#terminal'), terminalStatus,
-      terminalCommand.value);
-    terminalCommand.disabled = true;
+    terminalSession = module.openTerminal(document.querySelector('#terminal'), terminalStatus);
     terminalPaste.disabled = false;
     terminalToggle.textContent = 'Close';
   } catch (error) {

@@ -60,8 +60,8 @@ requested image URL. The browser does not send the Luochu URL as a referrer.
 
 ## Terminal
 
-Open the terminal and choose a shell or an installed Claude/Copilot CLI. It
-starts in the project directory and runs with your user permissions. Agent
+Open the terminal to start a shell in the project directory, where you can run
+commands such as Claude or Copilot. It runs with your user permissions. Agent
 approval is handled by each CLI's normal permission prompts; the shell has
 unrestricted user-level access. Pasting a multiline editor selection asks for
 confirmation because it may run commands immediately.

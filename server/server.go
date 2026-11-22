@@ -239,20 +239,13 @@ func (s *Server) serveCapabilities(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	terminal := s.projectRoot != "" && runtime.GOOS != "windows"
-	commands := make([]string, 0)
 	if terminal {
-		available := terminalCommands()
-		for _, name := range []string{"shell", "claude", "copilot"} {
-			if available[name] != "" {
-				commands = append(commands, name)
-			}
-		}
-		terminal = len(commands) > 0
+		_, err := terminalShell()
+		terminal = err == nil
 	}
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		"server":           true,
-		"basePath":         s.config.BasePath,
-		"terminalCommands": commands,
+		"server":   true,
+		"basePath": s.config.BasePath,
 		"capabilities": map[string]bool{
 			"files":     s.projectRoot != "",
 			"watch":     s.watcher != nil,

@@ -30,36 +30,24 @@ type terminalSession struct {
 	exited  bool
 }
 
-func terminalCommands() map[string]string {
-	commands := make(map[string]string)
+func terminalShell() (string, error) {
 	shell := os.Getenv("SHELL")
 	if shell == "" {
 		shell = "/bin/sh"
 	}
-	if path, err := exec.LookPath(shell); err == nil {
-		commands["shell"] = path
-	}
-	for _, name := range []string{"claude", "copilot"} {
-		if path, err := exec.LookPath(name); err == nil {
-			commands[name] = path
-		}
-	}
-	return commands
+	return exec.LookPath(shell)
 }
 
-func (s *Server) newTerminal(kind string) (string, *terminalSession, error) {
-	command := terminalCommands()[kind]
-	if command == "" {
-		return "", nil, errors.New("terminal command is unavailable")
+func (s *Server) newTerminal() (string, *terminalSession, error) {
+	shell, err := terminalShell()
+	if err != nil {
+		return "", nil, err
 	}
 	id, err := GenerateToken()
 	if err != nil {
 		return "", nil, err
 	}
-	cmd := exec.Command(command)
-	if kind == "shell" {
-		cmd.Args = append(cmd.Args, "-i")
-	}
+	cmd := exec.Command(shell, "-i")
 	cmd.Dir = s.projectRoot
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
 	file, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 24, Cols: 80})
@@ -193,6 +181,10 @@ func (s *Server) serveTerminal(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid Origin", http.StatusForbidden)
 		return
 	}
+	if r.URL.Query().Has("command") {
+		http.Error(w, "command selection is not supported", http.StatusBadRequest)
+		return
+	}
 	upgrader := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -203,7 +195,7 @@ func (s *Server) serveTerminal(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("session")
 	var session *terminalSession
 	if id == "" {
-		id, session, err = s.newTerminal(r.URL.Query().Get("command"))
+		id, session, err = s.newTerminal()
 	} else {
 		s.terminalMu.Lock()
 		session = s.terminals[id]

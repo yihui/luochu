@@ -1,7 +1,7 @@
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 
-export function openTerminal(element, status, command) {
+export function openTerminal(element, status) {
   const terminal = new Terminal({ cursorBlink: true, scrollback: 5000 }),
     fit = new FitAddon(), encoder = new TextEncoder();
   terminal.loadAddon(fit);
@@ -25,7 +25,6 @@ export function openTerminal(element, status, command) {
     const url = new URL("api/terminal", document.baseURI);
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
     if (session) url.searchParams.set("session", session);
-    else url.searchParams.set("command", command);
     status.textContent = session ? "Reconnecting terminal…" : "Starting terminal…";
     socket = new WebSocket(url);
     socket.binaryType = "arraybuffer";

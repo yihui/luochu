@@ -42,7 +42,7 @@ try {
   });
   const noMathPage = await browser.newPage(), mathRequests = [];
   await noMathPage.route("**/api/capabilities", (route) =>
-    route.fulfill({ json: { capabilities: { terminal: false }, terminalCommands: [] } }));
+    route.fulfill({ json: { capabilities: { terminal: false } } }));
   noMathPage.on("request", (request) => {
     if (/\/assets\/math\.(js|css)$/.test(new URL(request.url()).pathname))
       mathRequests.push(request.url());
@@ -67,7 +67,7 @@ try {
 
   const page = await browser.newPage({ viewport: { width: 1100, height: 750 } }), errors = [];
   let terminalSocket, terminalConnections = 0;
-  await page.routeWebSocket("**/api/terminal?*", (socket) => {
+  await page.routeWebSocket(/\/api\/terminal(?:\?|$)/, (socket) => {
     terminalSocket = socket;
     terminalConnections++;
     socket.connectToServer();
@@ -626,12 +626,14 @@ try {
     throw new Error(`Raw HTML whitespace was not rendered correctly: ${JSON.stringify(rawContent)}`);
   await page.locator("#terminal-controls").waitFor({ state: "visible" });
   if (terminalRequests.length) throw new Error("Terminal assets loaded before the terminal was opened");
+  if (await page.locator("#terminal-controls select").count())
+    throw new Error("Terminal controls should not offer command selection");
   await page.locator("#terminal-toggle").click();
   await page.waitForFunction(() => document.querySelector("#terminal-status").textContent.startsWith("Connected."))
     .catch(async (error) => { throw new Error(`${error.message}: ${await page.locator("#terminal-status").textContent()}`); });
   if (terminalRequests.length !== 2) throw new Error(`Terminal assets did not load lazily: ${terminalRequests}`);
   await page.locator(".xterm-helper-textarea").focus();
-  await page.keyboard.type("printf 'browser-test-%s\\n' ready");
+  await page.keyboard.type("sh -c 'printf \"browser-test-%s\\n\" ready'");
   await page.keyboard.press("Enter");
   await page.waitForFunction(() => document.querySelector(".xterm-rows").textContent.includes("browser-test-ready"));
   await page.evaluate(() => {
