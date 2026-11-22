@@ -22,7 +22,7 @@ func TestTerminalWindowsExit(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(session.stop)
-	if _, err := session.pty.Write([]byte("set LUOCHU_TEST_END=output\r\necho last-%LUOCHU_TEST_END%\r\nexit\r\n")); err != nil {
+	if _, err := session.pty.Write([]byte("for /L %i in (1,1,1000) do @echo last-%i\r\nexit\r\n")); err != nil {
 		t.Fatal(err)
 	}
 	deadline := time.Now().Add(10 * time.Second)
@@ -41,7 +41,7 @@ func TestTerminalWindowsExit(t *testing.T) {
 	session.mu.Lock()
 	output := string(session.history)
 	session.mu.Unlock()
-	if !strings.Contains(output, "last-output") {
+	if !strings.Contains(output, "last-1000") {
 		t.Fatalf("missing final output: %q", output)
 	}
 }

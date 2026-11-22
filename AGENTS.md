@@ -19,7 +19,8 @@ art and current implementation.
   ([draft PR #24](https://github.com/yihui/luochu/pull/24)). Chromium and Go
   tests cover shell I/O, reconnect, resize, authorization, and guarded paste.
   The terminal opens a shell using xpty (Unix PTY or Windows ConPTY); users
-  launch agent CLIs themselves. Windows runtime validation is pending.
+  launch agent CLIs themselves. Windows Go terminal tests run on GitHub Actions;
+  interactive browser and agent CLI testing on Windows remains outstanding.
   Windows starts through xpty's ConPTY `Spawn` because xpty v0.1.4's `Start`
   leaks the returned process handle; revisit this when upgrading xpty.
   The error helper remains to implement. Real interactive Claude/Copilot and
