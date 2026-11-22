@@ -1,0 +1,26 @@
+:root {
+  --fg: #1d1f21;
+  --muted: #777;
+  --code-bg: #f4f4f4;
+}
+html, body { height: auto; margin: 0; }
+body {
+  display: block;
+  background: #fff;
+  color: var(--fg);
+  font: 1em/1.6 system-ui, sans-serif;
+}
+body, #preview, section { display: block; }
+#preview { padding: 0 1em; }
+[role="doc-endnotes"] {
+  border-top: 1px solid var(--muted);
+  margin-top: 2em;
+  padding-top: 1em;
+}
+img { max-width: 100%; }
+pre { background: var(--code-bg); padding: 0.625em; overflow: auto; }
+table { border-collapse: collapse; }
+td, th { border: 1px solid var(--muted); padding: 0.1875em 0.5em; }
+.dj-al-left { text-align: left; }
+.dj-al-center { text-align: center; }
+.dj-al-right { text-align: right; }

@@ -26,3 +26,9 @@ await esbuild.build({
   minify: true,
   sourcemap: false,
 });
+await esbuild.build({
+  entryPoints: ["web/preview.css"],
+  bundle: true,
+  outfile: "server/static/assets/preview.css",
+  minify: true,
+});
