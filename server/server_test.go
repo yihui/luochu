@@ -1,8 +1,12 @@
 package server
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -101,5 +105,71 @@ func TestGenerateToken(t *testing.T) {
 	}
 	if len(a) < 40 || a == b {
 		t.Fatalf("tokens not random/long: %q %q", a, b)
+	}
+}
+
+func fileRequest(s *Server, method, target string, body io.Reader) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(method, target, body)
+	req.Host = "127.0.0.1"
+	req.URL.RawQuery += "&token=test-token"
+	if body != nil {
+		req.Header.Set("Content-Type", "text/plain")
+	}
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestProjectFileReadWriteConflictAndRename(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "one.dj"), []byte("hello"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	s, err := New(Config{Token: "test-token", ProjectRoot: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rec := fileRequest(s, http.MethodGet, "/api/file?path=one.dj", nil)
+	if rec.Code != http.StatusOK || rec.Body.String() != "hello" {
+		t.Fatalf("read: got %d %q", rec.Code, rec.Body.String())
+	}
+	hash := rec.Header().Get("X-Luochu-Hash")
+
+	rec = fileRequest(s, http.MethodPut, "/api/file?path=one.dj", strings.NewReader("hello"))
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("write: got %d", rec.Code)
+	}
+
+	req := httptest.NewRequest(http.MethodPut, "/api/file?path=one.dj&token=test-token", strings.NewReader("other"))
+	req.Host = "127.0.0.1"
+	req.Header.Set("If-Match", "definitely-not-current")
+	rec = httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("conflict: got %d, want 409", rec.Code)
+	}
+
+	if hash == "" {
+		t.Fatal("read response did not include content hash")
+	}
+	rec = fileRequest(s, http.MethodPatch, "/api/file?from=one.dj&to=two.dj", nil)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("rename status: got %d", rec.Code)
+	}
+	if _, err := os.Stat(filepath.Join(root, "two.dj")); err != nil {
+		t.Fatalf("renamed file missing: %v", err)
+	}
+}
+
+func TestProjectTraversalRejected(t *testing.T) {
+	root := t.TempDir()
+	s, err := New(Config{Token: "test-token", ProjectRoot: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := fileRequest(s, http.MethodGet, "/api/file?path=../outside.dj", nil)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("got %d, want 400", rec.Code)
 	}
 }

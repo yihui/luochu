@@ -18,6 +18,7 @@ func main() {
 		port    = flag.Int("port", 0, "HTTP listen port; 0 chooses an available port")
 		prefix  = flag.String("base-path", "", "URL prefix, for example /p/1234")
 		origins = flag.String("allow-origin", "", "comma-separated browser origins")
+		project = flag.String("project", ".", "local project root")
 	)
 	flag.Parse()
 
@@ -43,9 +44,10 @@ func main() {
 		log.Fatal(err)
 	}
 	handler, err := server.New(server.Config{
-		BasePath: basePath,
-		Token:    token,
-		Origins:  originList,
+		BasePath:    basePath,
+		Token:       token,
+		Origins:     originList,
+		ProjectRoot: *project,
 	})
 	if err != nil {
 		log.Fatal(err)

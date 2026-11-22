@@ -118,7 +118,13 @@ const decoField = StateField.define({
 });
 
 const preview = document.querySelector("#preview");
-let renderPending = false;
+const fileTree = document.querySelector("#file-tree"),
+  saveButton = document.querySelector("#save-file");
+let renderPending = false,
+  currentPath = null,
+  currentHash = null,
+  dirty = false,
+  diskConflict = false;
 function renderPreview(text) {
   preview.innerHTML = renderHTML(parse(text, { sourcePositions: true }));
 }
@@ -136,7 +142,13 @@ const view = new EditorView({
       history(), keymap.of([...defaultKeymap, ...historyKeymap]), modeField, decoField,
       EditorView.lineWrapping,
       EditorView.updateListener.of((update) => {
-        if (update.docChanged) schedulePreview(update.state.doc.toString());
+        if (update.docChanged) {
+          if (currentPath && !diskConflict) {
+            dirty = true;
+            saveButton.textContent = "Save*";
+          }
+          schedulePreview(update.state.doc.toString());
+        }
       }),
     ],
   }),
@@ -169,3 +181,96 @@ preview.addEventListener("click", (event) => {
   const sourceOffset = Number(element.dataset.startpos.split(":")[2]);
   view.dispatch({ selection: { anchor: sourceOffset }, scrollIntoView: true }); view.focus();
 });
+
+const apiUrl = (path) => new URL(path, document.baseURI).toString();
+
+async function loadTree(directory = "") {
+  const response = await fetch(
+    apiUrl(`api/files?path=${encodeURIComponent(directory)}`),
+    { credentials: "same-origin" },
+  );
+  if (!response.ok) {
+    fileTree.textContent = "Project unavailable";
+    return;
+  }
+  const entries = await response.json();
+  fileTree.replaceChildren();
+  for (const entry of entries) {
+    if (entry.name.startsWith(".")) continue;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent =
+      entry.type === "directory" ? `${entry.name}/` : entry.name;
+    button.addEventListener("click", async () => {
+      if (entry.type === "directory") {
+        await loadTree(entry.path);
+      } else {
+        await openFile(entry.path);
+      }
+    });
+    fileTree.append(button);
+  }
+}
+
+async function openFile(path) {
+  if (dirty) {
+    const discard = window.confirm(
+      "Discard unsaved changes and open another file?",
+    );
+    if (!discard) return;
+  }
+  const response = await fetch(
+    apiUrl(`api/file?path=${encodeURIComponent(path)}`),
+    { credentials: "same-origin" },
+  );
+  if (!response.ok) return;
+  const text = await response.text();
+  currentPath = path;
+  currentHash = response.headers.get("X-Luochu-Hash");
+  dirty = false;
+  diskConflict = false;
+  saveButton.disabled = false;
+  saveButton.textContent = "Save";
+  view.dispatch({
+    changes: { from: 0, to: view.state.doc.length, insert: text },
+  });
+  document.title = `Luochu - ${path}`;
+}
+
+saveButton.addEventListener("click", async () => {
+  if (!currentPath) return;
+  const response = await fetch(
+    apiUrl(`api/file?path=${encodeURIComponent(currentPath)}`),
+    {
+      method: "PUT",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "text/plain",
+        "If-Match": currentHash,
+      },
+      body: view.state.doc.toString(),
+    },
+  );
+  if (response.status === 409) {
+    diskConflict = true;
+    saveButton.textContent = "Conflict";
+    saveButton.title =
+      "The file changed on disk; reload or resolve it explicitly";
+    return;
+  }
+  if (!response.ok) return;
+  currentHash = response.headers.get("X-Luochu-Hash");
+  dirty = false;
+  diskConflict = false;
+  saveButton.textContent = "Save";
+  saveButton.title = "";
+});
+
+loadTree();
+if (typeof EventSource !== "undefined") {
+  const watch = new EventSource(apiUrl("api/watch"));
+  watch.addEventListener("change", async (event) => {
+    if (!currentPath || event.data !== currentPath) return;
+    if (!dirty) await openFile(currentPath);
+  });
+}
