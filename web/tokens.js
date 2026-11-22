@@ -1,59 +1,43 @@
 // Map djot parser events to editor spans. Pure (no DOM), so it also runs in Node.
-import { parseEvents } from "@djot/djot";
+import { isBlock, isInline, parse, parseEvents } from "@djot/djot";
 
-// paired inline elements: opener/closer are markup, content is styled
-const INLINE = new Set([
-  "emph",
-  "strong",
-  "mark",
-  "insert",
-  "delete",
-  "subscript",
-  "superscript",
-  "verbatim",
-  "inline_math",
-  "display_math",
-  "span",
-  "linktext",
-  "url",
-  "imagetext",
-  "single_quoted",
-  "double_quoted",
-  "heading",
+// Explicit controls only: these annotations need editor-specific behavior.
+const SKIP = new Set(["para", "list", "section"]),
+  WHOLE = new Set([
+    "attributes",
+    "block_attributes",
+    "destination",
+    "reference",
+  ]),
+  LEAF_HIDE = new Set([
+    "attr_class_marker",
+    "attr_id_marker",
+    "attr_equal_marker",
+    "attr_space",
+    "open_marker",
+    "image_marker",
+    "escape",
+  ]),
+  LEAF_SKIP = new Set(["str", "soft_break", "blankline", "hard_break"]);
+
+const EVENT_TAGS = new Map([
+  ["linktext", "link"],
+  ["imagetext", "image"],
 ]);
-// paired elements hidden whole in visual mode (markup with no visible meaning)
-const WHOLE = new Set([
-  "attributes",
-  "block_attributes",
-  "destination",
-  "reference",
-]);
-// paired block elements: style their lines
-const BLOCK = new Set([
-  "heading",
-  "block_quote",
-  "code_block",
-  "div",
-  "table",
-  "caption",
-  "definition_list",
-  "footnote",
-]);
-// fenced blocks: opener/closer are fences (hidden in visual mode)
-const FENCE = new Set(["code_block", "div"]);
-// structural pairs with no decoration of their own
-const SKIP = new Set(["para", "list", "section"]);
-// leaf tokens that are markup (hidden in visual mode)
-const LEAF_HIDE = new Set([
-  "attr_class_marker",
-  "attr_id_marker",
-  "attr_equal_marker",
-  "attr_space",
-  "open_marker",
-  "image_marker",
-  "escape",
-]);
-const LEAF_SKIP = new Set(["str", "soft_break", "blankline", "hard_break"]);
+
+function collectTagNames(ast, predicate) {
+  const names = new Set();
+  function visit(node) {
+    if (!node || typeof node !== "object") return;
+    if (typeof node.tag === "string" && predicate(node)) names.add(node.tag);
+    for (const value of Object.values(node)) {
+      if (Array.isArray(value)) value.forEach(visit);
+      else if (value && typeof value === "object") visit(value);
+    }
+  }
+  visit(ast);
+  return names;
+}
 
 // '+list|X' -> 'list', '-heading' -> 'heading'
 const nameOf = (a) => a.slice(1).split("|")[0],
@@ -69,9 +53,12 @@ const nameOf = (a) => a.slice(1).split("|")[0],
 //   'image'  whole image (widget), `alt`, `src`
 //   'table'  whole table (block widget)
 export function tokenize(text) {
-  const out = [];
-  const stack = [];
-  const pairs = [];
+  const ast = parse(text, { sourcePositions: true }),
+    inlineNames = collectTagNames(ast, isInline),
+    blockNames = collectTagNames(ast, isBlock),
+    out = [],
+    stack = [],
+    pairs = [];
   for (const e of parseEvents(text)) {
     const a = e.annot;
     if (a[0] === "+") stack.push({ name: nameOf(a), sub: subOf(a), ev: e });
@@ -163,7 +150,7 @@ export function tokenize(text) {
       });
     if (WHOLE.has(name))
       return out.push({ kind: "delim", from: open.startpos, to: end });
-    if (INLINE.has(name)) {
+    if (inlineNames.has(name) || inlineNames.has(EVENT_TAGS.get(name) || "")) {
       // a newline closer (heading) is the line end, not a delimiter
       const newlineClose = !close || text[close.startpos] === "\n";
       // heading opener is the '#'s plus trailing spaces
@@ -183,7 +170,7 @@ export function tokenize(text) {
       if (cTo > oTo)
         out.push({ kind: "mark", from: oTo, to: cTo, cls: "dj-" + name });
     }
-    if (FENCE.has(name)) {
+    if (blockNames.has(name) && (name === "code_block" || name === "div")) {
       out.push({ kind: "delim", from: open.startpos, to: open.endpos + 1 });
       if (close && /^[`:]/.test(text[close.startpos]))
         out.push({ kind: "delim", from: close.startpos, to: close.endpos + 1 });
@@ -237,7 +224,7 @@ export function tokenize(text) {
           cls: "dj-listnum",
         });
     }
-    if (BLOCK.has(name)) {
+    if (blockNames.has(name)) {
       const cls = [`dj-${name}`];
       if (name === "heading")
         cls.push(`dj-h${text.slice(open.startpos).match(/^#+/)[0].length}`);

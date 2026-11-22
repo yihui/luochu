@@ -17,6 +17,9 @@ JavaScript source style:
 - Combine adjacent `const` declarations into comma-separated declarations.
   Do not split them merely for minifier assumptions; generated output may be
   minified separately.
+- Use native CSS nesting when a selector is structurally grouped, such as
+  layout children, state variants, widget internals, preview elements, and
+  responsive overrides.
 
 1. Work one issue at a time. Read the issue before editing:
    `gh issue view <number> --repo yihui/luochu`
@@ -34,20 +37,20 @@ JavaScript source style:
 
 ## Progress
 
-| Step | Issue | Status | Outcome / handoff |
-|---|---|---:|---|
-| Architecture and feasibility spikes | [#1](https://github.com/yihui/luochu/issues/1) | PR [#13](https://github.com/yihui/luochu/pull/13) | Findings and benchmark complete |
-| Go server and Host API | [#2](https://github.com/yihui/luochu/issues/2) | PR [#14](https://github.com/yihui/luochu/pull/14) | Stacked on #13; Go skeleton and tests |
-| CodeMirror and Djot source/visual core | [#3](https://github.com/yihui/luochu/issues/3) | In progress | Stacked on #14; editor shell and tests |
-| File tree, watching, conflicts, and SPA storage | [#4](https://github.com/yihui/luochu/issues/4) | Open | Blocked by #2-#3 |
-| Djot preview and visual widgets | [#5](https://github.com/yihui/luochu/issues/5) | Open | Blocked by #3-#4 |
-| Terminal and agent CLIs | [#6](https://github.com/yihui/luochu/issues/6) | Open | Blocked by #2-#4 |
-| Git and patch/diff review | [#7](https://github.com/yihui/luochu/issues/7) | Open | Blocked by #2-#4 |
-| Native Djot chunk execution and cache | [#8](https://github.com/yihui/luochu/issues/8) | Open | Blocked by #1-#3 |
-| Browser Wasm runtimes | [#9](https://github.com/yihui/luochu/issues/9) | Open | Blocked by #8 |
-| Export, document filters, and migration | [#10](https://github.com/yihui/luochu/issues/10) | Open | Blocked by #5-#8 |
-| Proxy and desktop validation | [#11](https://github.com/yihui/luochu/issues/11) | Open | Blocked by #2-#9 |
-| Optional collaboration | [#12](https://github.com/yihui/luochu/issues/12) | Open | Last; blocked by #2-#11 |
+| Step                                            | Issue                                            |                                            Status | Outcome / handoff                      |
+| ----------------------------------------------- | ------------------------------------------------ | ------------------------------------------------: | -------------------------------------- |
+| Architecture and feasibility spikes             | [#1](https://github.com/yihui/luochu/issues/1)   | PR [#13](https://github.com/yihui/luochu/pull/13) | Findings and benchmark complete        |
+| Go server and Host API                          | [#2](https://github.com/yihui/luochu/issues/2)   | PR [#14](https://github.com/yihui/luochu/pull/14) | Stacked on #13; Go skeleton and tests  |
+| CodeMirror and Djot source/visual core          | [#3](https://github.com/yihui/luochu/issues/3)   |                                       In progress | Stacked on #14; editor shell and tests |
+| File tree, watching, conflicts, and SPA storage | [#4](https://github.com/yihui/luochu/issues/4)   |                                              Open | Blocked by #2-#3                       |
+| Djot preview and visual widgets                 | [#5](https://github.com/yihui/luochu/issues/5)   |                                              Open | Blocked by #3-#4                       |
+| Terminal and agent CLIs                         | [#6](https://github.com/yihui/luochu/issues/6)   |                                              Open | Blocked by #2-#4                       |
+| Git and patch/diff review                       | [#7](https://github.com/yihui/luochu/issues/7)   |                                              Open | Blocked by #2-#4                       |
+| Native Djot chunk execution and cache           | [#8](https://github.com/yihui/luochu/issues/8)   |                                              Open | Blocked by #1-#3                       |
+| Browser Wasm runtimes                           | [#9](https://github.com/yihui/luochu/issues/9)   |                                              Open | Blocked by #8                          |
+| Export, document filters, and migration         | [#10](https://github.com/yihui/luochu/issues/10) |                                              Open | Blocked by #5-#8                       |
+| Proxy and desktop validation                    | [#11](https://github.com/yihui/luochu/issues/11) |                                              Open | Blocked by #2-#9                       |
+| Optional collaboration                          | [#12](https://github.com/yihui/luochu/issues/12) |                                              Open | Last; blocked by #2-#11                |
 
 **Current state:** No implementation work or repository scaffold is present in
 the Luochu checkout yet. Issue #1 is the first step. All prior implementation

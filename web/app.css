@@ -6,49 +6,170 @@
   --code-bg: #f4f4f4;
   --hl: #fff3a3;
 }
-* { box-sizing: border-box; }
-html, body { height: 100%; margin: 0; }
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
 body {
   display: grid;
   grid-template-rows: 38px minmax(0, 1fr);
   background: var(--bg);
   color: var(--fg);
-  font: 15px/1.6 system-ui, sans-serif;
+  font:
+    15px/1.6 system-ui,
+    sans-serif;
+
+  header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 10px;
+    border-bottom: 1px solid #cfcfcf;
+  }
+
+  main {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    min-height: 0;
+  }
 }
-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 4px 10px;
-  border-bottom: 1px solid #cfcfcf;
+
+#editor,
+#preview-pane {
+  min-height: 0;
+  overflow: auto;
 }
-main { display: grid; grid-template-columns: 1fr 1fr; min-height: 0; }
-#editor, #preview-pane { min-height: 0; overflow: auto; }
-#preview-pane { border-left: 1px solid #cfcfcf; padding: 0 16px; }
-.cm-editor { height: 100%; }
-.cm-scroller { font-family: ui-monospace, monospace; }
-.visual .cm-content { font-family: system-ui, sans-serif; font-size: 16px; }
-.dj-delim { color: var(--muted); }
-.visual .dj-delim { text-decoration: none; }
-.dj-emph { font-style: italic; }
-.dj-strong { font-weight: 700; }
-.dj-mark { background: var(--hl); }
-.dj-code_block, .dj-block_quote, .dj-div, .dj-table, .dj-definition_list, .dj-footnote {
+
+#preview-pane {
+  border-left: 1px solid #cfcfcf;
+  padding: 0 16px;
+}
+
+.cm-editor {
+  height: 100%;
+
+  .cm-scroller {
+    font-family: ui-monospace, monospace;
+  }
+}
+
+.visual {
+  .cm-content {
+    font-family: system-ui, sans-serif;
+    font-size: 16px;
+  }
+
+  .dj-delim {
+    text-decoration: none;
+  }
+}
+
+.dj-delim {
+  color: var(--muted);
+}
+
+.dj-emph {
+  font-style: italic;
+}
+
+.dj-strong {
+  font-weight: 700;
+}
+
+.dj-mark {
+  background: var(--hl);
+}
+
+.dj-code_block,
+.dj-block_quote,
+.dj-div,
+.dj-table,
+.dj-definition_list,
+.dj-footnote {
   background: rgba(127, 127, 127, 0.06);
 }
-.dj-block_quote { border-left: 3px solid var(--muted); padding-left: 8px; }
-.dj-chunk { background: rgba(43, 108, 176, 0.12) !important; }
-.dj-chunkopt { color: var(--muted); }
-.dj-bullet { color: var(--accent); display: inline-block; width: 1.1em; }
-.dj-check { margin: 0 8px 0 0; }
-.dj-image img { max-height: 120px; vertical-align: middle; }
-.dj-hr-widget { display: block; border-top: 2px solid var(--muted); margin: 10px 0; }
-.dj-table-widget table { border-collapse: collapse; }
-.dj-table-widget td, .dj-table-widget th { border: 1px solid var(--muted); padding: 3px 8px; }
-#preview [data-startpos] { cursor: pointer; }
-#preview img { max-width: 100%; }
-#preview pre { background: var(--code-bg); padding: 10px; overflow: auto; }
+
+.dj-block_quote {
+  border-left: 3px solid var(--muted);
+  padding-left: 8px;
+}
+
+.dj-chunk {
+  background: rgba(43, 108, 176, 0.12) !important;
+}
+
+.dj-chunkopt {
+  color: var(--muted);
+}
+
+.dj-bullet {
+  color: var(--accent);
+  display: inline-block;
+  width: 1.1em;
+}
+
+.dj-check {
+  margin: 0 8px 0 0;
+}
+
+.dj-image {
+  img {
+    max-height: 120px;
+    vertical-align: middle;
+  }
+}
+
+.dj-hr-widget {
+  display: block;
+  border-top: 2px solid var(--muted);
+  margin: 10px 0;
+}
+
+.dj-table-widget {
+  table {
+    border-collapse: collapse;
+  }
+
+  td,
+  th {
+    border: 1px solid var(--muted);
+    padding: 3px 8px;
+  }
+}
+
+#preview {
+  [data-startpos] {
+    cursor: pointer;
+  }
+
+  img {
+    max-width: 100%;
+  }
+
+  pre {
+    background: var(--code-bg);
+    padding: 10px;
+    overflow: auto;
+  }
+}
+
 @media (max-width: 700px) {
-  main { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
-  #preview-pane { border-left: 0; border-top: 1px solid #cfcfcf; }
+  body {
+    main {
+      grid-template-columns: 1fr;
+      grid-template-rows: 1fr 1fr;
+    }
+  }
+
+  #preview-pane {
+    border-left: 0;
+    border-top: 1px solid #cfcfcf;
+  }
 }
