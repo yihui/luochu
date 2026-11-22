@@ -18,3 +18,11 @@ await esbuild.build({
   outfile: "server/static/assets/app.css",
   minify: true,
 });
+await esbuild.build({
+  entryPoints: ["web/preview.js"],
+  bundle: true,
+  format: "iife",
+  outfile: "server/static/assets/preview.js",
+  minify: true,
+  sourcemap: false,
+});

@@ -59,6 +59,14 @@ JavaScript source style:
 | Proxy and desktop validation                    | [#11](https://github.com/yihui/luochu/issues/11) |                                              Open | Blocked by #2-#9                       |
 | Optional collaboration                          | [#12](https://github.com/yihui/luochu/issues/12) |                                              Open | Last; blocked by #2-#11                |
 
+**Recent handoff (2026-11-21):**
+
+- Issue #5 is in progress on branch `stack/issue-5-preview`.
+- Added sandboxed iframe preview messaging, keyed block patching helpers,
+  source-offset click/scroll messages, and preview script sanitization.
+- Full visual widgets, document numbering, and LaTeX export remain follow-up
+  work within Issue #5 unless split into focused follow-up issues.
+
 **Current state:** No implementation work or repository scaffold is present in
 the Luochu checkout yet. Issue #1 is the first step. All prior implementation
 plan detail has moved into issue bodies; future sessions should treat GitHub

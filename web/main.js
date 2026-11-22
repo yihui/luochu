@@ -132,7 +132,13 @@ const decoField = StateField.define({
   provide: (field) => EditorView.decorations.from(field),
 });
 
-const preview = document.querySelector("#preview");
+const previewFrame = document.querySelector("#preview-frame");
+let previewReady = false,
+  pendingPreviewHTML = "";
+previewFrame.srcdoc = `<!doctype html><html>
+<head><meta charset="utf-8"><link rel="stylesheet" href="assets/app.css"></head>
+<body><main id="preview"></main><script src="assets/preview.js"></script></body>
+</html>`;
 const fileTree = document.querySelector("#file-tree"),
   saveButton = document.querySelector("#save-file");
 let renderPending = false,
@@ -141,7 +147,11 @@ let renderPending = false,
   dirty = false,
   diskConflict = false;
 function renderPreview(text) {
-  preview.innerHTML = safeTableAlignmentHTML(renderHTML(parse(text, { sourcePositions: true })));
+  pendingPreviewHTML = safeTableAlignmentHTML(renderHTML(parse(text, { sourcePositions: true })));
+  if (previewReady) previewFrame.contentWindow.postMessage(
+    { channel: "luochu-preview", type: "render", html: pendingPreviewHTML },
+    "*",
+  );
 }
 function schedulePreview(text) {
   if (renderPending) return;
@@ -178,23 +188,35 @@ const applyMode = (visual) => {
 };
 toggle.addEventListener("click", () => applyMode(!view.state.field(modeField)));
 
-const previewPane = document.querySelector("#preview-pane");
 view.scrollDOM.addEventListener("scroll", () => {
   const top = view.lineBlockAtHeight(view.scrollDOM.scrollTop).from;
   const line = view.state.doc.lineAt(top).number;
-  let target = null;
-  for (const element of preview.querySelectorAll("[data-startpos]")) {
-    const startLine = Number(element.dataset.startpos.split(":")[0]);
-    if (startLine <= line) target = element; else break;
-  }
-  if (target) previewPane.scrollTop = target.offsetTop - previewPane.offsetTop;
+  const offset = view.state.doc.line(line).from;
+  if (previewReady) previewFrame.contentWindow.postMessage(
+    { channel: "luochu-preview", type: "scroll", offset },
+    "*",
+  );
 });
 
-preview.addEventListener("click", (event) => {
-  const element = event.target.closest("[data-startpos]");
-  if (!element) return;
-  const sourceOffset = Number(element.dataset.startpos.split(":")[2]);
-  view.dispatch({ selection: { anchor: sourceOffset }, scrollIntoView: true }); view.focus();
+window.addEventListener("message", (event) => {
+  if (event.source !== previewFrame.contentWindow ||
+      event.data?.channel !== "luochu-preview") return;
+  if (event.data.type === "ready") {
+    previewReady = true;
+    if (pendingPreviewHTML) previewFrame.contentWindow.postMessage(
+      { channel: "luochu-preview", type: "render", html: pendingPreviewHTML },
+      "*",
+    );
+  } else if (event.data.type === "source-scroll" ||
+             event.data.type === "source-click") {
+    const offset = event.data.offset;
+    if (!Number.isFinite(offset)) return;
+    view.dispatch({
+      selection: { anchor: offset },
+      scrollIntoView: event.data.type === "source-click",
+    });
+    if (event.data.type === "source-click") view.focus();
+  }
 });
 
 const apiUrl = (path) => new URL(path, document.baseURI).toString();
