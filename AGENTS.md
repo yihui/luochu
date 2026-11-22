@@ -47,8 +47,8 @@ JavaScript source style:
 | ----------------------------------------------- | ------------------------------------------------ | ------------------------------------------------: | -------------------------------------- |
 | Architecture and feasibility spikes             | [#1](https://github.com/yihui/luochu/issues/1)   | PR [#13](https://github.com/yihui/luochu/pull/13) | Findings and benchmark complete        |
 | Go server and Host API                          | [#2](https://github.com/yihui/luochu/issues/2)   | PR [#14](https://github.com/yihui/luochu/pull/14) | Stacked on #13; Go skeleton and tests  |
-| CodeMirror and Djot source/visual core          | [#3](https://github.com/yihui/luochu/issues/3)   |                                       In progress | Stacked on #14; editor shell and tests |
-| File tree, watching, conflicts, and SPA storage | [#4](https://github.com/yihui/luochu/issues/4)   |                                              Open | Blocked by #2-#3                       |
+| CodeMirror and Djot source/visual core | [#3](https://github.com/yihui/luochu/issues/3) | Closed | Merged via PR #15, squash commit 01bae6a |
+| File tree, watching, conflicts, and SPA storage | [#4](https://github.com/yihui/luochu/issues/4) | Open | Branch stack needs recreation after PR #15 merge |
 | Djot preview and visual widgets                 | [#5](https://github.com/yihui/luochu/issues/5)   |                                              Open | Blocked by #3-#4                       |
 | Terminal and agent CLIs                         | [#6](https://github.com/yihui/luochu/issues/6)   |                                              Open | Blocked by #2-#4                       |
 | Git and patch/diff review                       | [#7](https://github.com/yihui/luochu/issues/7)   |                                              Open | Blocked by #2-#4                       |
@@ -78,6 +78,10 @@ issues and this section as the source of truth.
 - Issue #3 is in progress on branch `stack/issue-3-djot-editor`.
 - Initial Issue #3 build is 834226 bytes uncompressed and 180696 bytes gzipped
   for app.js, plus 2159 bytes of CSS.
+- PR #15 was merged into `main` as squash commit `01bae6a` on 2026-11-21.
+  The old PR #15 branch was deleted. PR #16 is closed because its old base
+  branch disappeared; do not continue or modify it until Issue #4 is rebuilt
+  onto current `main`.
 - Frontend build correction: generated `server/static/assets/*` files are
   ignored and not committed. Esbuild output is minified without source maps;
   the corrected initial app bundle is 353 KB uncompressed / 112784 bytes gzip,
