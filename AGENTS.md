@@ -48,7 +48,7 @@ JavaScript source style:
 | Architecture and feasibility spikes             | [#1](https://github.com/yihui/luochu/issues/1)   | PR [#13](https://github.com/yihui/luochu/pull/13) | Findings and benchmark complete        |
 | Go server and Host API                          | [#2](https://github.com/yihui/luochu/issues/2)   | PR [#14](https://github.com/yihui/luochu/pull/14) | Stacked on #13; Go skeleton and tests  |
 | CodeMirror and Djot source/visual core | [#3](https://github.com/yihui/luochu/issues/3) | Closed | Merged via PR #15, squash commit 01bae6a |
-| File tree, watching, conflicts, and SPA storage | [#4](https://github.com/yihui/luochu/issues/4) | Open | Branch stack needs recreation after PR #15 merge |
+| File tree, watching, conflicts, and SPA storage | [#4](https://github.com/yihui/luochu/issues/4) | PR [#18](https://github.com/yihui/luochu/pull/18) | Recreated after PR #16 was closed by the deleted PR #15 base |
 | Djot preview and visual widgets                 | [#5](https://github.com/yihui/luochu/issues/5)   |                                              Open | Blocked by #3-#4                       |
 | Terminal and agent CLIs                         | [#6](https://github.com/yihui/luochu/issues/6)   |                                              Open | Blocked by #2-#4                       |
 | Git and patch/diff review                       | [#7](https://github.com/yihui/luochu/issues/7)   |                                              Open | Blocked by #2-#4                       |
