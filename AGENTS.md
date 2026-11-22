@@ -29,8 +29,8 @@ Repository: https://github.com/yihui/luochu
 
 | Step | Issue | Status | Outcome / handoff |
 |---|---|---:|---|
-| Architecture and feasibility spikes | [#1](https://github.com/yihui/luochu/issues/1) | Open | Next |
-| Go server and Host API | [#2](https://github.com/yihui/luochu/issues/2) | Open | Blocked by #1 decisions |
+| Architecture and feasibility spikes | [#1](https://github.com/yihui/luochu/issues/1) | PR [#13](https://github.com/yihui/luochu/pull/13) | Findings and benchmark complete |
+| Go server and Host API | [#2](https://github.com/yihui/luochu/issues/2) | In progress | Stacked on #13; Go skeleton and tests |
 | CodeMirror and Djot source/visual core | [#3](https://github.com/yihui/luochu/issues/3) | Open | Blocked by #2 |
 | File tree, watching, conflicts, and SPA storage | [#4](https://github.com/yihui/luochu/issues/4) | Open | Blocked by #2-#3 |
 | Djot preview and visual widgets | [#5](https://github.com/yihui/luochu/issues/5) | Open | Blocked by #3-#4 |
@@ -57,6 +57,9 @@ issues and this section as the source of truth.
 - Issue #1 is active on branch `spike/issue-1-feasibility`; it records
   reproducible Djot/parser benchmarks from lite-edit prototype commit
   `cabc7971ed4f496a146a764bf694e9b8f5c80fa4`.
+- Issue #2 is in progress on branch `stack/issue-2-server-skeleton`.
+- PR #13 is the Issue #1 stacked PR; PR #14 will be created from the Issue #1
+  branch for review as an Issue #2 stack.
 - Temporary lite-edit worktree `/tmp/lite-edit-prototype-spike` will be removed
   after npm dependencies finish and benchmarks are complete.
 - Record any further new Homebrew formulae/casks here before relying on them.
@@ -151,7 +154,20 @@ Still require spikes or maintainer decisions:
 
 ## Commands
 
-The repository is not scaffolded yet. Issue #1 comes first. Once code exists,
-add exact install, build, test, lint, server, static preview, and bundle
-commands here. Verify commands before documenting them; do not copy guesses
-from lite-edit.
+Verified server commands:
+
+```bash
+go mod download
+go test ./...
+gofmt -w cmd/luochu/main.go server/*.go
+go run ./cmd/luochu
+go run ./cmd/luochu -port 48765 -base-path /proxy
+```
+
+Verified Djot benchmark commands:
+
+```bash
+cd tools/djot-spike
+npm ci
+npm run spike
+```
