@@ -21,6 +21,14 @@ body {
 }
 #editor, #preview-pane { min-height: 0; overflow: auto; }
 #preview-pane { width: 100%; height: 100%; border: 0; border-left: 1px solid #cfcfcf; }
+#terminal-controls[hidden], #terminal-pane[hidden] { display: none; }
+body main.terminal-open { grid-template-rows: minmax(0, 1fr) minmax(10em, 35%); }
+#terminal-pane {
+  grid-column: 2 / -1; min-height: 0; display: flex; flex-direction: column;
+  border-top: 1px solid #cfcfcf;
+  #terminal-status { padding: 0 0.5em; font-size: 0.8em; }
+  #terminal { flex: 1; min-height: 0; }
+}
 .cm-editor {
   height: 100%;
   .cm-scroller { font-family: ui-monospace, monospace; }
@@ -32,4 +40,6 @@ body {
   body main { grid-template-columns: 11.25em 1fr; grid-template-rows: 1fr 1fr; }
   #file-tree { grid-row: 1 / 3; }
   #preview-pane { border-left: 0; border-top: 1px solid #cfcfcf; }
+  body main.terminal-open { grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) minmax(10em, 35%); }
+  body main.terminal-open #file-tree { grid-row: 1 / 4; }
 }

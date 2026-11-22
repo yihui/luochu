@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"embed"
@@ -38,6 +39,8 @@ type Server struct {
 	projectRoot string
 	watcher     *fsnotify.Watcher
 	changes     chan string
+	terminalMu  sync.Mutex
+	terminals   map[string]*terminalSession
 }
 
 func GenerateToken() (string, error) {
@@ -74,7 +77,8 @@ func New(config Config) (*Server, error) {
 			return nil, err
 		}
 	}
-	s := &Server{config: config, static: static, projectRoot: root, changes: make(chan string, 128)}
+	s := &Server{config: config, static: static, projectRoot: root, changes: make(chan string, 128),
+		terminals: make(map[string]*terminalSession)}
 	if root != "" {
 		watcher, err := fsnotify.NewWatcher()
 		if err != nil {
@@ -139,6 +143,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.serveFile(w, r)
 	case path == "/api/watch":
 		s.serveWatch(w, r)
+	case path == "/api/terminal":
+		s.serveTerminal(w, r)
 	case strings.HasPrefix(path, "/assets/"):
 		s.serveAsset(w, r, strings.TrimPrefix(path, "/"))
 	default:
@@ -231,6 +237,11 @@ func (s *Server) serveAsset(w http.ResponseWriter, r *http.Request, name string)
 func (s *Server) serveCapabilities(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
+	terminal := s.projectRoot != "" && terminalSupported()
+	if terminal {
+		_, _, err := terminalShell()
+		terminal = err == nil
+	}
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"server":   true,
 		"basePath": s.config.BasePath,
@@ -238,7 +249,7 @@ func (s *Server) serveCapabilities(w http.ResponseWriter) {
 			"files":     s.projectRoot != "",
 			"watch":     s.watcher != nil,
 			"git":       false,
-			"terminal":  false,
+			"terminal":  terminal,
 			"nativeRun": false,
 			"wasmRun":   false,
 		},

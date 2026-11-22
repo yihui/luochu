@@ -11,12 +11,20 @@
     <strong>Luochu</strong>
     <button id="mode-toggle" type="button">Visual</button>
     <button id="save-file" type="button" disabled>Save</button>
+    <span id="terminal-controls" hidden>
+      <button id="terminal-toggle" type="button">Open terminal</button>
+      <button id="terminal-paste" type="button" disabled>Paste selection</button>
+    </span>
   </header>
   <main>
     <aside id="file-tree" aria-label="Project files"></aside>
     <section id="editor" aria-label="Djot source editor"></section>
     <iframe id="preview-pane" title="Djot preview" sandbox="allow-same-origin"
       srcdoc="<!doctype html><html><head><link rel='stylesheet' href='assets/preview.css'></head><body><article id='preview'></article></body></html>"></iframe>
+    <section id="terminal-pane" aria-label="Terminal" hidden>
+      <div id="terminal-status" role="status"></div>
+      <div id="terminal"></div>
+    </section>
   </main>
   <script src="assets/app.js"></script>
 </body>

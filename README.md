@@ -58,6 +58,19 @@ HTML is sanitized to remove scripts before rendering.
 External images are allowed, but their hosts can see your IP address and the
 requested image URL. The browser does not send the Luochu URL as a referrer.
 
+## Terminal
+
+Open the terminal to start a shell in the project directory, where you can run
+commands such as Claude or Copilot. It runs with your user permissions. Agent
+approval is handled by each CLI's normal permission prompts; the shell has
+unrestricted user-level access. Pasting a multiline editor selection asks for
+confirmation because it may run commands immediately.
+
+The terminal reconnects to the same process after a connection loss, replaying
+up to 256 KiB of output. A disconnected process is stopped after two minutes.
+On Unix it opens `$SHELL` (or `/bin/sh`); on Windows it opens `%COMSPEC%`
+(or `cmd.exe`) and requires ConPTY (Windows 10 version 1809 or later).
+
 ## Test
 
 ```bash

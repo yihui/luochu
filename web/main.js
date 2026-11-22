@@ -267,3 +267,64 @@ saveButton.onclick = async () => {
   saveButton.textContent = 'Save'
 }
 loadTree()
+
+const terminalControls = document.querySelector('#terminal-controls'),
+  terminalToggle = document.querySelector('#terminal-toggle'),
+  terminalPaste = document.querySelector('#terminal-paste'),
+  terminalPane = document.querySelector('#terminal-pane'),
+  terminalStatus = document.querySelector('#terminal-status');
+let terminalSession = null, terminalAssets = null;
+fetch(apiUrl('api/capabilities'), {credentials: 'same-origin'}).then((response) => {
+  if (!response.ok) throw new Error(`Capability request failed: ${response.status}`);
+  return response.json();
+}).then(({capabilities}) => {
+  if (!capabilities.terminal) return;
+  terminalControls.hidden = false;
+}).catch((error) => console.error('Could not load capabilities:', error));
+
+terminalToggle.onclick = async () => {
+  if (!terminalPane.hidden) {
+    terminalSession?.close();
+    terminalSession = null;
+    terminalPane.hidden = true;
+    document.querySelector('main').classList.remove('terminal-open');
+    terminalPaste.disabled = true;
+    terminalToggle.textContent = 'Open terminal';
+    return;
+  }
+  terminalToggle.disabled = true;
+  terminalPane.hidden = false;
+  document.querySelector('main').classList.add('terminal-open');
+  terminalStatus.textContent = 'Loading terminal…';
+  try {
+    if (!terminalAssets) {
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = apiUrl('assets/terminal.css');
+      const stylesheet = new Promise((resolve, reject) => {
+        link.onload = resolve;
+        link.onerror = () => reject(new Error('Could not load terminal stylesheet'));
+      });
+      document.head.append(link);
+      terminalAssets = Promise.all([import('./terminal.js'), stylesheet]).then(([module]) => module)
+        .catch((error) => { link.remove(); terminalAssets = null; throw error; });
+    }
+    const module = await terminalAssets;
+    terminalSession = module.openTerminal(document.querySelector('#terminal'), terminalStatus);
+    terminalPaste.disabled = false;
+    terminalToggle.textContent = 'Close';
+  } catch (error) {
+    terminalStatus.textContent = `Could not open terminal: ${error.message}`;
+    terminalToggle.textContent = 'Close';
+    console.error('Could not open terminal:', error);
+  } finally {
+    terminalToggle.disabled = false;
+  }
+};
+terminalPaste.onclick = () => {
+  const {from, to} = view.state.selection.main, text = view.state.sliceDoc(from, to);
+  if (!text) { terminalStatus.textContent = 'Select text in the editor first.'; return; }
+  if (text.includes('\n') &&
+    !window.confirm('Pasting multiple lines may run commands immediately. Continue?')) return;
+  terminalSession?.paste(text);
+};

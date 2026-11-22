@@ -15,9 +15,18 @@ art and current implementation.
   Issue #9 currently depends on #8's execution protocol and cache; reconcile
   that dependency when starting #9 rather than claiming native-first and
   shared-protocol support before it exists.
+- #6 is in progress on `feature/issue-6-terminal`
+  ([draft PR #24](https://github.com/yihui/luochu/pull/24)). Chromium and Go
+  tests cover shell I/O, reconnect, resize, authorization, and guarded paste.
+  The terminal opens a shell using xpty (Unix PTY or Windows ConPTY); users
+  launch agent CLIs themselves. Windows Go terminal tests run on GitHub Actions;
+  interactive browser and agent CLI testing on Windows remains outstanding.
+  Windows starts through xpty's ConPTY `Spawn` because xpty v0.1.4's `Start`
+  leaks the returned process handle; revisit this when upgrading xpty.
+  The error helper remains to implement. Real interactive Claude/Copilot and
+  RStudio proxy tests remain outstanding; Claude was not installed here.
 - [#5](https://github.com/yihui/luochu/issues/5): Djot document experience;
-  [PR #19](https://github.com/yihui/luochu/pull/19) is a partial implementation.
-  Keep #5 open until its acceptance criteria are met.
+  keep it open until its acceptance criteria are met.
   - [#20](https://github.com/yihui/luochu/issues/20): bidirectional scroll sync.
   - [#21](https://github.com/yihui/luochu/issues/21): visual widget interactions.
   - [#22](https://github.com/yihui/luochu/issues/22): large-document performance.
@@ -77,11 +86,14 @@ art and current implementation.
 - Ship one Go server binary with embedded UI. Generated assets, source maps,
   caches, and release archives are not committed. Keep the initial JS under
   roughly 200 KB compressed and lazy-load expensive functionality.
-- Current initial app JS: 132,348 bytes gzip; lazy KaTeX: 77,403 bytes JS and
-  4,168 bytes CSS gzip, plus fonts. The demo loads math at startup. Cold/warm
-  load timings remain unmeasured; see #22.
-- Agent commands run with user rights and require confirmation by default.
-  Keep API keys out of browser storage and source control.
+- Current initial app JS: 132,838 bytes gzip; lazy terminal: 72,531 bytes JS
+  and 1,733 bytes CSS gzip. Lazy KaTeX: 77,403 bytes JS and 4,168 bytes CSS
+  gzip, plus fonts; the demo loads math at startup. Cold/warm timings remain
+  unmeasured; see #22.
+- Terminal commands run with user rights. Use Claude and Copilot's normal
+  permission prompts; an unrestricted shell cannot enforce per-action approval.
+  Never enable agent permission-bypass flags. Keep API keys out of browser
+  storage and source control.
 
 ## Commands
 

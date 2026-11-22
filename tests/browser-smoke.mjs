@@ -34,13 +34,15 @@ try {
   browser = await chromium.launch({ headless: true });
   const noMathBundle = await esbuild.build({
     entryPoints: ["web/main.js"], bundle: true, format: "iife", write: false,
-    loader: { ".dj": "text" }, external: ["./math.js"], minify: true,
+    loader: { ".dj": "text" }, external: ["./math.js", "./terminal.js"], minify: true,
     define: { "process.env.NODE_ENV": '"production"' },
     plugins: [{ name: "no-math-demo", setup(build) {
       build.onLoad({ filter: /demo\.dj$/ }, () => ({ contents: "A document without math.", loader: "text" }));
     } }],
   });
   const noMathPage = await browser.newPage(), mathRequests = [];
+  await noMathPage.route("**/api/capabilities", (route) =>
+    route.fulfill({ json: { capabilities: { terminal: false } } }));
   noMathPage.on("request", (request) => {
     if (/\/assets\/math\.(js|css)$/.test(new URL(request.url()).pathname))
       mathRequests.push(request.url());
@@ -51,6 +53,8 @@ try {
   await noMathPage.waitForFunction(() => window.__LUOCHU_EDITOR_VIEW__);
   await noMathPage.waitForTimeout(300);
   if (mathRequests.length) throw new Error("KaTeX loaded for a document without math");
+  if (await noMathPage.locator("#terminal-controls").isVisible())
+    throw new Error("Terminal controls are visible when the capability is absent");
   await noMathPage.evaluate(() => {
     const view = window.__LUOCHU_EDITOR_VIEW__;
     view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: "First edit." } });
@@ -62,6 +66,12 @@ try {
   await noMathPage.close();
 
   const page = await browser.newPage({ viewport: { width: 1100, height: 750 } }), errors = [];
+  let terminalSocket, terminalConnections = 0;
+  await page.routeWebSocket(/\/api\/terminal(?:\?|$)/, (socket) => {
+    terminalSocket = socket;
+    terminalConnections++;
+    socket.connectToServer();
+  });
   const imageBody = Buffer.from(await page.evaluate(() => {
     const canvas = document.createElement("canvas");
     canvas.width = 120; canvas.height = 100;
@@ -69,8 +79,11 @@ try {
     return canvas.toDataURL("image/png").split(",")[1];
   }), "base64");
   let imageRequest, unsafeRequest = false;
+  const terminalRequests = [];
   page.on("request", (request) => {
     if (request.url().includes("attacker.invalid")) unsafeRequest = true;
+    if (/\/assets\/terminal\.(js|css)$/.test(new URL(request.url()).pathname))
+      terminalRequests.push(request.url());
   });
   await page.route("https://attacker.invalid/**", (route) => route.abort());
   await page.route("https://www.r-project.org/Rlogo.png", async (route) => {
@@ -611,6 +624,61 @@ try {
   if (Math.abs(rawContent.gap) > 2 || rawContent.whiteSpace !== "pre" ||
     rawContent.text !== "  a\n  b")
     throw new Error(`Raw HTML whitespace was not rendered correctly: ${JSON.stringify(rawContent)}`);
+  await page.locator("#terminal-controls").waitFor({ state: "visible" });
+  if (terminalRequests.length) throw new Error("Terminal assets loaded before the terminal was opened");
+  if (await page.locator("#terminal-controls select").count())
+    throw new Error("Terminal controls should not offer command selection");
+  await page.locator("#terminal-toggle").click();
+  await page.waitForFunction(() => document.querySelector("#terminal-status").textContent.startsWith("Connected."))
+    .catch(async (error) => { throw new Error(`${error.message}: ${await page.locator("#terminal-status").textContent()}`); });
+  if (terminalRequests.length !== 2) throw new Error(`Terminal assets did not load lazily: ${terminalRequests}`);
+  await page.locator(".xterm-helper-textarea").focus();
+  await page.keyboard.type("sh -c 'printf \"browser-test-%s\\n\" ready'");
+  await page.keyboard.press("Enter");
+  await page.waitForFunction(() => document.querySelector(".xterm-rows").textContent.includes("browser-test-ready"));
+  await page.evaluate(() => {
+    const view = window.__LUOCHU_EDITOR_VIEW__, text = "printf 'paste-test-%s\\n' ready";
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text },
+      selection: { anchor: 0, head: text.length } });
+  });
+  await page.locator("#terminal-paste").click();
+  await page.keyboard.press("Enter");
+  await page.waitForFunction(() => document.querySelector(".xterm-rows").textContent.includes("paste-test-ready"));
+  await page.keyboard.type("export LUOCHU_RECONNECT=preserved");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("printf 'before-reconnect-%s\\n' \"$LUOCHU_RECONNECT\"");
+  await page.keyboard.press("Enter");
+  await page.waitForFunction(() =>
+    document.querySelector(".xterm-rows").textContent.includes("before-reconnect-preserved"));
+  await terminalSocket.close({ code: 1001, reason: "test disconnect" });
+  await page.waitForFunction(() => document.querySelector("#terminal-status").textContent.includes("reconnecting"));
+  await page.waitForFunction(() => document.querySelector("#terminal-status").textContent.startsWith("Connected."))
+    .catch(async (error) => { throw new Error(`${error.message}: ${await page.locator("#terminal-status").textContent()}`); });
+  if (terminalConnections < 2) throw new Error("Terminal did not reconnect");
+  await page.waitForFunction(() =>
+    document.querySelector(".xterm-rows").textContent.includes("before-reconnect-preserved"));
+  await page.locator(".xterm-helper-textarea").focus();
+  await page.keyboard.type("printf 'after-reconnect-%s\\n' \"$LUOCHU_RECONNECT\"");
+  await page.keyboard.press("Enter");
+  await page.waitForFunction(() =>
+    document.querySelector(".xterm-rows").textContent.includes("after-reconnect-preserved"));
+  await page.evaluate(() => {
+    const view = window.__LUOCHU_EDITOR_VIEW__, text = "blocked-command-one\nblocked-command-two";
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text },
+      selection: { anchor: 0, head: text.length } });
+  });
+  let confirmed = false;
+  page.once("dialog", async (dialog) => { confirmed = true; await dialog.dismiss(); });
+  await page.locator("#terminal-paste").click();
+  if (!confirmed || (await page.locator(".xterm-rows").textContent()).includes("blocked-command"))
+    throw new Error("Multiline paste was not guarded by confirmation");
+  await page.locator("#terminal-toggle").click();
+  if (await page.locator("#terminal-pane").isVisible())
+    throw new Error("Closing the terminal did not hide the pane");
+  await page.locator("#terminal-toggle").click();
+  await page.waitForFunction(() => document.querySelector("#terminal-status").textContent.startsWith("Connected."));
+  if (terminalRequests.length !== 2) throw new Error("Reopening terminal reloaded its assets");
+  await page.locator("#terminal-toggle").click();
   if (errors.length) throw new Error(errors.join("\n"));
   console.log("Browser smoke: visual widgets, sanitized HTML, cursor clicks and proxy paths passed");
 } finally {
