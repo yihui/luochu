@@ -31,7 +31,23 @@ export function tokenize(text) {
   const ast = parse(text, { sourcePositions: true }),
     inlineNames = collectTagNames(ast, isInline),
     blockNames = collectTagNames(ast, isBlock),
-    out = [], stack = [], pairs = [];
+    out = [], stack = [], pairs = [], footnoteNumbers = new Map(), tables = new Map();
+
+  function collectNodes(node) {
+    if (!node || typeof node !== "object") return;
+    if (node.tag === "table") tables.set(node.pos.start.offset, node);
+    if ((node.tag === "raw_inline" || node.tag === "raw_block") && node.format === "html") {
+      const from = node.pos.start.offset, end = node.pos.end.offset + 1,
+        suffix = node.tag === "raw_inline" ? text.slice(end).match(/^\{=html\}/i)?.[0] || "" : "";
+      out.push({ kind: "raw", from, to: end + suffix.length, html: node.text,
+        block: node.tag === "raw_block" });
+    }
+    for (const value of Object.values(node)) {
+      if (Array.isArray(value)) value.forEach(collectNodes);
+      else if (value && typeof value === "object") collectNodes(value);
+    }
+  }
+  collectNodes(ast);
 
   for (const event of parseEvents(text)) {
     const annot = event.annot;
@@ -48,6 +64,11 @@ export function tokenize(text) {
   pairs.sort((a, b) => a.open.startpos - b.open.startpos);
   for (const pair of pairs) pairToken(pair);
   images(pairs);
+  for (const [label, number] of footnoteNumbers) {
+    const note = ast.footnotes[label], from = note.pos.start.offset,
+      marker = text.slice(from).match(/^\[\^[^\]\n]+\]:/);
+    if (marker) out.push({ kind: "footnote_label", from, to: from + marker[0].length, number });
+  }
   return out;
 
   function leaf(event) {
@@ -60,6 +81,16 @@ export function tokenize(text) {
     }
     if (annot === "checkbox_checked" || annot === "checkbox_unchecked")
       return out.push({ kind: "check", from, to, checked: annot === "checkbox_checked" });
+    if (annot === "footnote_reference") {
+      const label = text.slice(from + 2, to - 1), note = ast.footnotes[label];
+      if (note) {
+        if (!footnoteNumbers.has(label)) footnoteNumbers.set(label, footnoteNumbers.size + 1);
+        return out.push({
+          kind: "footnote", from, to, number: footnoteNumbers.get(label),
+          target: note.pos.start.offset,
+        });
+      }
+    }
     out.push({ kind: "mark", from, to, cls: "dj-" + annot });
   }
 
@@ -75,9 +106,10 @@ export function tokenize(text) {
       const tail = destination || reference;
       if (!tail || text[item.open.startpos - 1] !== "!") continue;
       const alt = text.slice(item.open.endpos + 1, item.close.startpos);
+      const label = reference ? text.slice(reference.open.endpos + 1, reference.close.startpos) || alt : "";
       const src = destination
         ? text.slice(destination.open.endpos + 1, destination.close.startpos).trim().split(/\s+/)[0]
-        : "";
+        : ast.references[label]?.destination || "";
       out.push({
         kind: "image", from: item.open.startpos - 1, to: tail.close.endpos + 1, alt, src,
       });
@@ -99,6 +131,9 @@ export function tokenize(text) {
         ? open.startpos + text.slice(open.startpos).match(/^#+[ \t]*/)[0].length : open.endpos + 1;
       out.push({ kind: "delim", from: open.startpos, to: openerEnd });
       const closerEnd = newlineClose ? (close ? close.startpos : text.length) : close.startpos;
+      if (close && (name === "inline_math" || name === "display_math"))
+        out.push({ kind: "math", from: open.startpos, to: end,
+          expression: text.slice(openerEnd, closerEnd), display: name === "display_math" });
       if (!newlineClose) out.push({ kind: "delim", from: close.startpos, to: close.endpos + 1 });
       if (closerEnd > openerEnd)
         out.push({ kind: "mark", from: openerEnd, to: closerEnd, cls: "dj-" + name });
@@ -121,9 +156,10 @@ export function tokenize(text) {
       }
     }
     if (name === "table") {
-      let to = end;
+      const node = tables.get(open.startpos);
+      let to = Math.max(end, ...(node?.children || []).map((child) => child.pos?.end.offset + 1 || 0));
       while (to > open.startpos && text[to - 1] === "\n") to--;
-      out.push({ kind: "table", from: open.startpos, to });
+      out.push({ kind: "table", from: open.startpos, to, node });
     }
     if (name === "list_item") {
       const marker = text[open.startpos];

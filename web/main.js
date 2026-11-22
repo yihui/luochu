@@ -3,8 +3,13 @@ import {EditorState, StateEffect, StateField} from '@codemirror/state'
 import {EditorView, keymap, Decoration} from '@codemirror/view'
 import {defaultKeymap, history, historyKeymap} from '@codemirror/commands'
 import {tokenize} from './tokens.js'
+import {bullet, checkbox, image, footnote, footnoteLabel, math, table, rawHTML, renderPreviewMath}
+  from './widgets.js'
+import {imageURL} from './urls.js'
+import {sanitizeHTML} from './safe-html.js'
 import demo from './demo.dj'
 
+let currentPath = null, currentHash = null, dirty = false, diskConflict = false;
 const setMode = StateEffect.define()
 const modeField = StateField.define({
   create: () => false,
@@ -18,25 +23,57 @@ function buildDecorations(state) {
   const doc = state.doc, text = doc.toString(), visual = state.field(modeField),
     firstActiveLine = doc.lineAt(state.selection.main.from).number,
     lastActiveLine = doc.lineAt(state.selection.main.to).number,
-    items = [], hidden = [], lineSeen = new Set();
+    items = [], hidden = [], lineSeen = new Set(), tokens = tokenize(text), widgets = [],
+    invalidImages = tokens.filter((token) => token.kind === 'image' &&
+      (!token.src || !imageURL(token.src, currentPath))),
+    selection = state.selection.main;
 
-  for (const token of tokenize(text)) {
+  if (visual) {
+    for (const kind of ['table', 'raw', 'image', 'math', 'footnote', 'footnote_label']) {
+      for (const token of tokens.filter((item) => item.kind === kind)) {
+        let {from, to} = token;
+        const block = kind === 'table' || kind === 'raw' && token.block;
+        if (block) {
+          if (kind === 'table' && !token.node) continue;
+          from = doc.lineAt(from).from;
+          to = doc.lineAt(to).to;
+        } else if (doc.lineAt(from).number !== doc.lineAt(to - 1).number) continue;
+        if (kind === 'image' && (!token.src || !imageURL(token.src, currentPath))) continue;
+        if (selection.from <= to && selection.to >= from) continue;
+        if (widgets.some((item) => from < item.to && to > item.from)) continue;
+        const widget = kind === 'table' ? table(token, text.slice(from, to), currentPath)
+          : kind === 'raw' ? rawHTML(token, currentPath)
+          : kind === 'image' ? image(token, currentPath)
+          : kind === 'math' ? math(token)
+          : kind === 'footnote' ? footnote(token) : footnoteLabel(token);
+        widgets.push({from, to});
+        items.push({from, to, decoration: Decoration.replace({widget, block})});
+      }
+    }
+  }
+  for (const token of tokens) {
     const from = token.from, to = Math.min(token.to, text.length);
     if (to < from) continue;
     if (token.kind === 'line') {
       const first = doc.lineAt(from).number, last = doc.lineAt(Math.max(from, to - 1)).number;
       for (let line = first; line <= last; line++) {
         const key = `${token.cls}:${line}`;
+        if (widgets.some((item) => doc.line(line).from >= item.from &&
+          doc.line(line).to <= item.to)) continue;
         if (lineSeen.has(key)) continue;
         lineSeen.add(key);
         items.push({from: doc.line(line).from, to: doc.line(line).from,
           decoration: Decoration.line({class: token.cls})});
       }
+    } else if (widgets.some((item) => from >= item.from && to <= item.to)) {
+      continue;
     } else if (token.kind === 'hr') {
       if (to > from) items.push({from, to, decoration: Decoration.mark({class: 'dj-delim'})});
     } else if (token.kind === 'delim') {
-      if (!visual) {
-        if (to > from) items.push({from, to, decoration: Decoration.mark({class: 'dj-delim'})});
+      if (!visual || invalidImages.some((item) => from >= item.from && to <= item.to)) {
+        if (to > from) items.push({from, to, decoration: Decoration.mark({
+          class: visual ? 'dj-delim dj-source' : 'dj-delim',
+        })});
       } else {
         const first = doc.lineAt(from).number, last = doc.lineAt(Math.max(from, to - 1)).number;
         for (let number = first; number <= last; number++) {
@@ -50,13 +87,13 @@ function buildDecorations(state) {
         }
       }
     } else if (token.kind === 'bullet') {
-      if (to > from) items.push({from, to, decoration: Decoration.mark({class: 'dj-delim'})});
+      if (to > from) items.push({from, to, decoration: visual &&
+        (doc.lineAt(from).number < firstActiveLine || doc.lineAt(from).number > lastActiveLine)
+        ? Decoration.replace({widget: bullet}) : Decoration.mark({class: 'dj-delim dj-source'})});
     } else if (token.kind === 'check') {
-      if (to > from) items.push({from, to, decoration: Decoration.mark({
-        class: visual && doc.lineAt(from).number >= firstActiveLine &&
-          doc.lineAt(from).number <= lastActiveLine ? 'dj-checkbox dj-source' : 'dj-checkbox',
-      })});
-    } else if (to > from) {
+      if (to > from) items.push({from, to, decoration: visual
+        ? Decoration.replace({widget: checkbox(token)}) : Decoration.mark({class: 'dj-checkbox'})});
+    } else if (token.kind === 'mark' && to > from) {
       items.push({from, to, decoration: Decoration.mark({class: token.cls})});
     }
   }
@@ -82,20 +119,9 @@ const decoField = StateField.define({
 const preview = document.querySelector('#preview')
 const previewPane = document.querySelector('#preview-pane')
 let renderPending = false
-function safeTableAlignmentHTML(html) {
-  const template = document.createElement('template')
-  template.innerHTML = html
-  for (const cell of template.content.querySelectorAll('th, td')) {
-    const match = /^text-align:\s*(left|center|right);?$/.exec((cell.getAttribute('style') || '').trim())
-    if (match) {
-      cell.classList.add(`dj-al-${match[1]}`)
-      cell.removeAttribute('style')
-    }
-  }
-  return template.innerHTML
-}
 function renderPreview(text) {
-  preview.innerHTML = safeTableAlignmentHTML(renderHTML(parse(text, {sourcePositions: true})))
+  preview.replaceChildren(sanitizeHTML(renderHTML(parse(text, {sourcePositions: true})), currentPath))
+  renderPreviewMath(preview)
 }
 function schedulePreview(text) {
   if (renderPending) return
@@ -167,7 +193,6 @@ window.__LUOCHU_EDITOR_VIEW__ = view
 
 const fileTree = document.querySelector('#file-tree')
 const saveButton = document.querySelector('#save-file')
-let currentPath = null, currentHash = null, dirty = false, diskConflict = false
 const apiUrl = (path) => new URL(path, document.baseURI).toString()
 async function loadTree(directory = '') {
   const response = await fetch(apiUrl(`api/files?path=${encodeURIComponent(directory)}`), {credentials: 'same-origin'})

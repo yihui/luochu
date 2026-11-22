@@ -23,8 +23,9 @@ JavaScript source style:
 - Prefer the proven lite-edit visual decoration model. Do not introduce iframe,
   postMessage, incremental block replacement, or custom source/preview
   transport unless a measured requirement proves it necessary.
-- Never use decoration ranges that replace block/table/image constructs:
-  replacement changes CodeMirror line geometry and cursor mapping.
+- Tables and raw HTML use CodeMirror block widgets; images and other inline
+  constructs use inline widgets. Preserve source access on selection and test
+  cursor positions around loaded widgets, including after scrolling.
 - Visual mode hides inactive inline markup with CodeMirror replacements, split
   at line boundaries; invisible text alone still occupies space. Reveal markup
   on selected lines. Preserve source offsets and line mapping. The whole
@@ -37,10 +38,8 @@ JavaScript source style:
 - Visual mode is state, not a transient DOM font override. Reapply the visual
   class from `modeField` after every CodeMirror transaction; selection rebuilds
   must not remove visual mode or switch the whole editor to monospace.
-- Never replace block/table/image content merely for visual appearance. Such
-  replacements change CodeMirror document geometry and can move the cursor to
-  a wrong line. Inline delimiter replacement is allowed only if it can be
-  measured not to alter source offsets and line count.
+- Widget replacements must be measured by CodeMirror, never via CSS margins on
+  editor lines. Browser tests must exercise selections before and after widgets.
 - Browser behavior is accepted only after `npm run test:browser` passes. Unit
   tests and bundle builds are necessary but not sufficient for visual mode,
   cursor mapping, CSS font scope, or scroll synchronization.
@@ -91,11 +90,25 @@ JavaScript source style:
   cumulative cursor-position errors. Hidden link syntax also reserved its
   full width. Browser tests now check real click coordinates, wrapped and
   scrolled lines, and link spacing; `npm run test:cursor` runs the same tests.
-- Preview is currently rendered directly into the main DOM, **not sandboxed**.
-  Treat untrusted content isolation and the server's CSP/COEP changes as
-  unresolved security work before PR #19 can be considered production-ready.
-  Preview-to-source scroll sync, visual widgets, document numbering, export,
-  and the issue's performance measurements also remain incomplete.
+- Visual mode has bullets, editable checkboxes, images, footnote links, tables,
+  sanitized raw HTML, and lazy KaTeX rendering. Clicking a table or raw widget
+  reveals its source. Inline and block raw HTML are sanitized with DOMPurify;
+  scripts, styles, handlers, frames, and other active content are not retained.
+- KaTeX and its fonts are local lazy-loaded assets. `../lite.js/js/render-katex.js`
+  is prior art for equation labels/references; those are not implemented yet.
+  DOMPurify is required to sanitize document HTML before inserting DOM nodes.
+  The initial app bundle is 129,222 bytes gzip (up 15,070 bytes from the
+  previous commit); math adds 77,403 bytes JS and 4,168 bytes CSS gzip on
+  demand, plus used fonts. The demo loads math at startup, so the two JS
+  transfers together slightly exceed 200 KiB. Cold/warm timings are unmeasured.
+- External HTTP(S) images are allowed by `img-src`; they contact the image host
+  and may disclose the reader's IP and image URL. `Referrer-Policy: no-referrer`
+  prevents sending the session URL. Relative images use the authenticated
+  project file API. This is an intentional CSP change requested by the user.
+- Preview is sanitized but still in the main DOM, **not sandboxed**. Restore
+  isolation and review the existing CSP/COEP changes before PR #19 is ready.
+  Preview-to-source scroll sync, full visual widgets, document numbering,
+  export, and the issue's performance measurements also remain incomplete.
 
 **Recent handoff (2026-11-21):**
 
