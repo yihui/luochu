@@ -23,6 +23,8 @@ function buildDecorations(state) {
   for (const token of tokenize(text)) {
     const from = token.from, to = Math.min(token.to, text.length)
     if (to < from) continue
+    const sameLine = doc.lineAt(from).number === doc.lineAt(Math.max(from, to - 1)).number
+    const touches = state.selection.main.from <= to && state.selection.main.to >= from
     if (token.kind === 'line') {
       const first = doc.lineAt(from).number
       const last = doc.lineAt(Math.max(from, to - 1)).number
@@ -33,6 +35,19 @@ function buildDecorations(state) {
         items.push({from: doc.line(line).from, to: doc.line(line).from,
           decoration: Decoration.line({class: token.cls})})
       }
+    } else if (token.kind === 'hr') {
+      if (to > from) items.push({from, to, decoration: Decoration.mark({class: 'dj-delim'})})
+    } else if (token.kind === 'delim') {
+      if (to > from)
+        items.push({from, to, decoration: Decoration.mark({
+          class: visual && doc.lineAt(from).number === cursorLine ? 'dj-delim dj-source' : 'dj-delim',
+        })})
+    } else if (token.kind === 'bullet') {
+      if (to > from) items.push({from, to, decoration: Decoration.mark({class: 'dj-delim'})})
+    } else if (token.kind === 'check') {
+      if (to > from) items.push({from, to, decoration: Decoration.mark({
+        class: visual && doc.lineAt(from).number === cursorLine ? 'dj-checkbox dj-source' : 'dj-checkbox',
+      })})
     } else if (to > from) {
       const cls = token.kind === 'delim'
         ? visual && doc.lineAt(from).number === cursorLine ? 'dj-delim dj-source' : 'dj-delim'
@@ -87,6 +102,7 @@ const view = new EditorView({
       history(), keymap.of([...defaultKeymap, ...historyKeymap]),
       modeField, decoField, EditorView.lineWrapping,
       EditorView.updateListener.of((update) => {
+        view.dom.classList.toggle('visual', view.state.field(modeField))
         if (update.docChanged) schedulePreview(update.state.doc.toString())
         if (update.docChanged && currentPath && !diskConflict) {
           dirty = true
@@ -132,29 +148,6 @@ preview.addEventListener('click', (event) => {
   const offset = Number(element.dataset.startpos.split(':')[2])
   view.dispatch({selection: {anchor: offset}, scrollIntoView: true})
   view.focus()
-  setTimeout(() => { syncFromPreview = false }, 100)
-})
-
-previewPane.addEventListener('scroll', () => {
-  if (syncFromPreview) return
-  syncFromPreview = true
-  let target = null
-  let targetTop = Infinity
-  const paneRect = previewPane.getBoundingClientRect()
-  for (const element of preview.querySelectorAll('[data-startpos]')) {
-    const rect = element.getBoundingClientRect()
-    if (rect.bottom <= paneRect.top) continue
-    const distance = Math.abs(rect.top - paneRect.top)
-    if (distance < targetTop) { target = element; targetTop = distance }
-  }
-  if (target) {
-    const offset = Number(target.dataset.startpos.split(':')[2])
-    view.dispatch({selection: {anchor: offset}})
-    requestAnimationFrame(() => {
-      const coords = view.coordsAtPos(offset)
-      if (coords) view.scrollDOM.scrollTop += coords.top - previewPane.getBoundingClientRect().top
-    })
-  }
   setTimeout(() => { syncFromPreview = false }, 100)
 })
 

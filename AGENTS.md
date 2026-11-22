@@ -20,6 +20,27 @@ JavaScript source style:
 - Use native CSS nesting when a selector is structurally grouped, such as
   layout children, state variants, widget internals, preview elements, and
   responsive overrides.
+- Prefer the proven lite-edit visual decoration model. Do not introduce iframe,
+  postMessage, incremental block replacement, or custom source/preview
+  transport unless a measured requirement proves it necessary.
+- Never use decoration ranges that replace block/table/image constructs:
+  replacement changes CodeMirror line geometry and cursor mapping.
+- Visual mode may hide markup or render inline widgets only when it preserves
+  source offsets and line mapping. The whole `.cm-scroller` stays in the visual
+  font; only source revealed on the cursor line or local source spans use
+  monospace.
+- Scroll sync has no reciprocal loop: source scroll may move preview, preview
+  click reveals source, and preview scroll does not continuously write source.
+- Visual mode is state, not a transient DOM font override. Reapply the visual
+  class from `modeField` after every CodeMirror transaction; selection rebuilds
+  must not remove visual mode or switch the whole editor to monospace.
+- Never replace block/table/image content merely for visual appearance. Such
+  replacements change CodeMirror document geometry and can move the cursor to
+  a wrong line. Inline delimiter replacement is allowed only if it can be
+  measured not to alter source offsets and line count.
+- Browser behavior is accepted only after `npm run test:browser` passes. Unit
+  tests and bundle builds are necessary but not sufficient for visual mode,
+  cursor mapping, CSS font scope, or scroll synchronization.
 - Keep source compact. Put simple declarations, selectors, arguments, and
   short objects on one line; break a line only when it exceeds roughly 100
   characters or nesting/semantics require it.

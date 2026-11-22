@@ -62,12 +62,33 @@ const selection = await page.evaluate(() => ({
     window.__LUOCHU_EDITOR_VIEW__.state.selection.main.anchor,
   ).number,
 }));
+const revealedSourceFonts = await page.locator(".dj-source").evaluateAll((elements) =>
+  elements.map((element) => getComputedStyle(element).fontFamily),
+);
+const wholeEditorFont = await page.locator(".cm-editor").evaluate((element) =>
+  ({
+    visual: element.classList.contains("visual"),
+    scroller: getComputedStyle(element.querySelector(".cm-scroller")).fontFamily,
+    content: getComputedStyle(element.querySelector(".cm-content")).fontFamily,
+  }),
+);
 
-console.log(JSON.stringify({previewCount, visualState, selection, errors}));
+console.log(JSON.stringify({
+  previewCount,
+  visualState,
+  wholeEditorFont,
+  revealedSourceFonts,
+  selection,
+  errors,
+}));
 await browser.close();
 server.kill("SIGTERM");
 rmSync(binary, {force: true});
 
 if (!visualState.visual) throw new Error("visual mode did not activate");
+if (!wholeEditorFont.visual) throw new Error("visual mode lost after source click");
+if (!wholeEditorFont.scroller.includes("system-ui")) throw new Error("visual scroller changed font");
+if (revealedSourceFonts.some((font) => !font.includes("monospace")))
+  throw new Error("revealed source did not use monospace");
 if (selection.line !== 6) throw new Error(`paragraph click landed on line ${selection.line}`);
 if (errors.length) throw new Error(errors.join("\n"));

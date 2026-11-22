@@ -10,6 +10,13 @@ server.
 
 ## Run
 
+The simplest development command builds the UI, starts Luochu, and opens the
+default browser:
+
+```bash
+npm run dev
+```
+
 Install frontend dependencies and build the browser assets:
 
 ```bash

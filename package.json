@@ -4,9 +4,10 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
+    "dev": "npm run build && go run ./cmd/luochu -project . -port 48765 -open",
     "server": "npm run build && go run ./cmd/luochu",
     "test": "node --test tests/*.test.mjs",
-    "test:browser": "node tests/browser-smoke.mjs",
+    "test:browser": "npm run build && node tests/browser-smoke.mjs",
     "test:cursor": "node tests/cursor-diagnostic.mjs",
     "spike": "npm --prefix tools/djot-spike run spike"
   },
