@@ -23,7 +23,8 @@ JavaScript source style:
 - Keep source compact. Put simple declarations, selectors, arguments, and
   short objects on one line; break a line only when it exceeds roughly 100
   characters or nesting/semantics require it.
-- Prefer em-based CSS lengths over px.
+- Prefer em-based CSS lengths for scalable spacing and component dimensions.
+  Use px for borders and hairline details.
 - Avoid `!important`; use specificity or cascade order unless an override
   is genuinely unavoidable.
 

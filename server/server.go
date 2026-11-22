@@ -2,31 +2,42 @@ package server
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"io/fs"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"embed"
+
+	"github.com/fsnotify/fsnotify"
 )
 
 //go:embed static/*
 var staticFiles embed.FS
 
 type Config struct {
-	BasePath string
-	Token    string
-	Origins  []string
-	Hosts    []string
+	BasePath    string
+	Token       string
+	Origins     []string
+	Hosts       []string
+	ProjectRoot string
 }
 
 type Server struct {
-	config Config
-	static fs.FS
+	config      Config
+	static      fs.FS
+	projectRoot string
+	watcher     *fsnotify.Watcher
+	changes     chan string
 }
 
 func GenerateToken() (string, error) {
@@ -51,7 +62,28 @@ func New(config Config) (*Server, error) {
 	if len(config.Hosts) == 0 {
 		config.Hosts = []string{"127.0.0.1", "localhost"}
 	}
-	return &Server{config: config, static: static}, nil
+	root := ""
+	if config.ProjectRoot != "" {
+		var err error
+		root, err = filepath.Abs(config.ProjectRoot)
+		if err != nil {
+			return nil, err
+		}
+		root, err = filepath.EvalSymlinks(root)
+		if err != nil {
+			return nil, err
+		}
+	}
+	s := &Server{config: config, static: static, projectRoot: root, changes: make(chan string, 128)}
+	if root != "" {
+		watcher, err := fsnotify.NewWatcher()
+		if err != nil {
+			return nil, err
+		}
+		s.watcher = watcher
+		go s.watch(root)
+	}
+	return s, nil
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -101,6 +133,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.serveIndex(w, r)
 	case path == "/api/capabilities":
 		s.serveCapabilities(w)
+	case path == "/api/files":
+		s.serveFiles(w, r)
+	case path == "/api/file":
+		s.serveFile(w, r)
+	case path == "/api/watch":
+		s.serveWatch(w, r)
 	case strings.HasPrefix(path, "/assets/"):
 		s.serveAsset(w, r, strings.TrimPrefix(path, "/"))
 	default:
@@ -198,12 +236,225 @@ func (s *Server) serveCapabilities(w http.ResponseWriter) {
 		"server":   true,
 		"basePath": s.config.BasePath,
 		"capabilities": map[string]bool{
-			"files":     false,
-			"watch":     false,
+			"files":     s.projectRoot != "",
+			"watch":     s.watcher != nil,
 			"git":       false,
 			"terminal":  false,
 			"nativeRun": false,
 			"wasmRun":   false,
 		},
 	})
+}
+
+type fileInfo struct {
+	Path    string `json:"path"`
+	Name    string `json:"name"`
+	Type    string `json:"type"`
+	Size    int64  `json:"size"`
+	ModTime string `json:"mtime"`
+	Hash    string `json:"hash,omitempty"`
+}
+
+func (s *Server) projectPath(requestPath string) (string, error) {
+	if s.projectRoot == "" {
+		return "", errors.New("project root is not configured")
+	}
+	requestPath = strings.TrimSpace(requestPath)
+	if requestPath == "" {
+		requestPath = "."
+	}
+	if filepath.IsAbs(requestPath) {
+		return "", errors.New("absolute project paths are not allowed")
+	}
+	full := filepath.Join(s.projectRoot, filepath.FromSlash(requestPath))
+	relative, err := filepath.Rel(s.projectRoot, full)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return "", errors.New("path escapes project root")
+	}
+	return full, nil
+}
+
+func hashBytes(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
+}
+
+func (s *Server) serveFiles(w http.ResponseWriter, r *http.Request) {
+	if s.projectRoot == "" {
+		http.Error(w, "project root is not configured", http.StatusNotFound)
+		return
+	}
+	requestPath := r.URL.Query().Get("path")
+	full, err := s.projectPath(requestPath)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		entries, err := os.ReadDir(full)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		result := make([]fileInfo, 0, len(entries))
+		for _, entry := range entries {
+			info, err := entry.Info()
+			if err != nil {
+				continue
+			}
+			entryType := "file"
+			if entry.IsDir() {
+				entryType = "directory"
+			}
+			relative, _ := filepath.Rel(s.projectRoot, filepath.Join(full, entry.Name()))
+			result = append(result, fileInfo{
+				Path:    filepath.ToSlash(relative),
+				Name:    entry.Name(),
+				Type:    entryType,
+				Size:    info.Size(),
+				ModTime: info.ModTime().UTC().Format(time.RFC3339Nano),
+			})
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(result)
+	case http.MethodPost:
+		if err := os.Mkdir(full, 0755); err != nil {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+	default:
+		w.Header().Set("Allow", "GET, POST")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) serveFile(w http.ResponseWriter, r *http.Request) {
+	full, err := s.projectPath(r.URL.Query().Get("path"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		data, err := os.ReadFile(full)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		info, err := os.Stat(full)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		relative, _ := filepath.Rel(s.projectRoot, full)
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("X-Luochu-Hash", hashBytes(data))
+		w.Header().Set("X-Luochu-Mtime", info.ModTime().UTC().Format(time.RFC3339Nano))
+		w.Header().Set("X-Luochu-Path", filepath.ToSlash(relative))
+		_, _ = w.Write(data)
+	case http.MethodPut:
+		data, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if expected := r.Header.Get("If-Match"); expected != "" {
+			current, err := os.ReadFile(full)
+			if err == nil && hashBytes(current) != expected {
+				http.Error(w, "conflict: file changed on disk", http.StatusConflict)
+				return
+			}
+		}
+		parent := filepath.Dir(full)
+		resolvedParent, err := filepath.EvalSymlinks(parent)
+		if err == nil {
+			relative, relErr := filepath.Rel(s.projectRoot, resolvedParent)
+			if relErr != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+				http.Error(w, "path escapes project root", http.StatusBadRequest)
+				return
+			}
+		}
+		if err := os.WriteFile(full, data, 0644); err != nil {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+		w.Header().Set("X-Luochu-Hash", hashBytes(data))
+		w.WriteHeader(http.StatusNoContent)
+	case http.MethodPatch:
+		from, err := s.projectPath(r.URL.Query().Get("from"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		to, err := s.projectPath(r.URL.Query().Get("to"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if err := os.Rename(from, to); err != nil {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	case http.MethodDelete:
+		if err := os.Remove(full); err != nil {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		w.Header().Set("Allow", "GET, PUT, PATCH, DELETE")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) watch(root string) {
+	_ = s.watcher.Add(root)
+	for {
+		select {
+		case event, ok := <-s.watcher.Events:
+			if !ok {
+				return
+			}
+			relative, err := filepath.Rel(root, event.Name)
+			if err == nil {
+				select {
+				case s.changes <- filepath.ToSlash(relative):
+				default:
+				}
+			}
+		case _, ok := <-s.watcher.Errors:
+			if !ok {
+				return
+			}
+		}
+	}
+}
+
+func (s *Server) serveWatch(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusNotImplemented)
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-store")
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case path := <-s.changes:
+			_, _ = w.Write([]byte("event: change\ndata: " + path + "\n\n"))
+			flusher.Flush()
+		case <-ticker.C:
+			_, _ = w.Write([]byte(": keepalive\n\n"))
+			flusher.Flush()
+		case <-r.Context().Done():
+			return
+		}
+	}
 }

@@ -20,3 +20,4 @@ test("nested and malformed Djot keeps source ranges valid", () => {
     tokens = tokenize(text);
   assert.ok(tokens.every((token) => token.from >= 0 && token.to >= token.from));
 });
+

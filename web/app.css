@@ -9,12 +9,20 @@ body {
   background: var(--bg); color: var(--fg); font: 1em/1.6 system-ui, sans-serif;
   header {
     display: flex; align-items: center; gap: 0.625em;
-    padding: 0.25em 0.625em; border-bottom: 0.0625em solid #cfcfcf;
+    padding: 0.25em 0.625em; border-bottom: 1px solid #cfcfcf;
   }
-  main { display: grid; grid-template-columns: 1fr 1fr; min-height: 0; }
+  main { display: grid; grid-template-columns: 13.75em 1fr 1fr; min-height: 0; }
+}
+#file-tree {
+  overflow: auto; border-right: 1px solid #cfcfcf; padding: 0.375em;
+  button {
+    display: block; width: 100%; border: 0; background: transparent;
+    color: inherit; text-align: left; cursor: pointer; padding: 0.1875em 0.375em;
+    &:hover { background: rgba(127, 127, 127, 0.12); }
+  }
 }
 #editor, #preview-pane { min-height: 0; overflow: auto; }
-#preview-pane { border-left: 0.0625em solid #cfcfcf; padding: 0 1em; }
+#preview-pane { border-left: 1px solid #cfcfcf; padding: 0 1em; }
 .cm-editor {
   height: 100%;
   .cm-scroller { font-family: ui-monospace, monospace; }
@@ -30,7 +38,7 @@ body {
 .dj-code_block, .dj-block_quote, .dj-div, .dj-table, .dj-definition_list, .dj-footnote {
   background: rgba(127, 127, 127, 0.06);
 }
-.dj-block_quote { border-left: 0.1875em solid var(--muted); padding-left: 0.5em; }
+.dj-block_quote { border-left: 3px solid var(--muted); padding-left: 0.5em; }
 .dj-chunk { background: rgba(43, 108, 176, 0.12); }
 .dj-chunkopt { color: var(--muted); }
 .dj-bullet { color: var(--accent); display: inline-block; width: 1.1em; }
@@ -39,14 +47,18 @@ body {
 .dj-hr-widget { display: block; border-top: 0.125em solid var(--muted); margin: 0.625em 0; }
 .dj-table-widget {
   table { border-collapse: collapse; }
-  td, th { border: 0.0625em solid var(--muted); padding: 0.1875em 0.5em; }
+  td, th { border: 1px solid var(--muted); padding: 0.1875em 0.5em; }
 }
+.dj-al-left { text-align: left; }
+.dj-al-center { text-align: center; }
+.dj-al-right { text-align: right; }
 #preview {
   [data-startpos] { cursor: pointer; }
   img { max-width: 100%; }
   pre { background: var(--code-bg); padding: 0.625em; overflow: auto; }
 }
 @media (max-width: 43.75em) {
-  body main { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
-  #preview-pane { border-left: 0; border-top: 0.0625em solid #cfcfcf; }
+  body main { grid-template-columns: 11.25em 1fr; grid-template-rows: 1fr 1fr; }
+  #file-tree { grid-row: 1 / 3; }
+  #preview-pane { border-left: 0; border-top: 1px solid #cfcfcf; }
 }
