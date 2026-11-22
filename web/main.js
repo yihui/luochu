@@ -136,7 +136,11 @@ const previewFrame = document.querySelector("#preview-frame");
 let previewReady = false,
   pendingPreviewHTML = "";
 previewFrame.srcdoc = `<!doctype html><html>
-<head><meta charset="utf-8"><link rel="stylesheet" href="assets/app.css"></head>
+<head><meta charset="utf-8"><style>
+html,body{height:auto;margin:0;background:#fff;color:#1d1f21;font:1em/1.6 system-ui,sans-serif}
+body,#preview,section{display:block}#preview{padding:0 1em}
+[role="doc-endnotes"]{display:block;border-top:1px solid #777;margin-top:2em;padding-top:1em}
+</style></head>
 <body><main id="preview"></main><script src="assets/preview.js"></script></body>
 </html>`;
 const fileTree = document.querySelector("#file-tree"),
