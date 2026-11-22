@@ -10,6 +10,13 @@ server.
 
 ## Run
 
+The simplest development command builds the UI, starts Luochu, and opens the
+default browser:
+
+```bash
+npm run dev
+```
+
 Install frontend dependencies and build the browser assets:
 
 ```bash
@@ -39,10 +46,23 @@ go run ./cmd/luochu -base-path /proxy -port 48765
 
 The token is required for requests. It is printed once when the server starts.
 
+## Local security
+
+Loopback limits network access to the machine running the server, but other
+local processes and websites opened in your browser may still try to reach it.
+The token in the initial URL authenticates the browser; subsequent requests
+use an HttpOnly cookie. Keep the URL private. Origin and Host checks provide
+additional protection against malicious websites and DNS rebinding. Document
+HTML is sanitized to remove scripts before rendering.
+
+External images are allowed, but their hosts can see your IP address and the
+requested image URL. The browser does not send the Luochu URL as a referrer.
+
 ## Test
 
 ```bash
 npm test
+npm run test:browser
 go test ./...
 ```
 

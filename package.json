@@ -4,8 +4,11 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
+    "dev": "npm run build && go run ./cmd/luochu -project . -port 48765 -open",
     "server": "npm run build && go run ./cmd/luochu",
     "test": "node --test tests/*.test.mjs",
+    "test:browser": "npm run build && node tests/browser-smoke.mjs",
+    "test:cursor": "npm run test:browser",
     "spike": "npm --prefix tools/djot-spike run spike"
   },
   "dependencies": {
@@ -14,6 +17,11 @@
     "@codemirror/state": "6.7.6",
     "@codemirror/view": "6.43.15",
     "@djot/djot": "0.3.2",
-    "esbuild": "0.28.2"
+    "dompurify": "3.5.0",
+    "esbuild": "0.28.2",
+    "katex": "0.19.1"
+  },
+  "devDependencies": {
+    "playwright": "^1.65.1"
   }
 }

@@ -11,10 +11,28 @@ await esbuild.build({
   minify: true,
   sourcemap: false,
   define: { "process.env.NODE_ENV": '"production"' },
+  external: ["./math.js"],
+});
+for (const name of ["app", "preview"]) {
+  await esbuild.build({
+    entryPoints: [`web/${name}.css`],
+    bundle: true,
+    outfile: `server/static/assets/${name}.css`,
+    minify: true,
+  });
+}
+await esbuild.build({
+  entryPoints: ["web/math.js"],
+  bundle: true,
+  format: "esm",
+  outfile: "server/static/assets/math.js",
+  minify: true,
 });
 await esbuild.build({
-  entryPoints: ["web/app.css"],
+  entryPoints: ["node_modules/katex/dist/katex.min.css"],
   bundle: true,
-  outfile: "server/static/assets/app.css",
+  outfile: "server/static/assets/math.css",
+  loader: { ".woff": "file", ".woff2": "file", ".ttf": "file" },
+  assetNames: "fonts/[name]-[hash]",
   minify: true,
 });

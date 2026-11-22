@@ -7,6 +7,8 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
+	"runtime"
 	"strings"
 
 	"github.com/yihui/luochu/server"
@@ -14,11 +16,12 @@ import (
 
 func main() {
 	var (
-		host    = flag.String("host", "127.0.0.1", "HTTP listen host")
-		port    = flag.Int("port", 0, "HTTP listen port; 0 chooses an available port")
-		prefix  = flag.String("base-path", "", "URL prefix, for example /p/1234")
-		origins = flag.String("allow-origin", "", "comma-separated browser origins")
-		project = flag.String("project", ".", "local project root")
+		host        = flag.String("host", "127.0.0.1", "HTTP listen host")
+		port        = flag.Int("port", 0, "HTTP listen port; 0 chooses an available port")
+		prefix      = flag.String("base-path", "", "URL prefix, for example /p/1234")
+		origins     = flag.String("allow-origin", "", "comma-separated browser origins")
+		project     = flag.String("project", ".", "local project root")
+		openBrowser = flag.Bool("open", false, "open Luochu in the default browser")
 	)
 	flag.Parse()
 
@@ -26,6 +29,7 @@ func main() {
 	if basePath != "" && basePath != "/" {
 		basePath = "/" + strings.Trim(basePath, "/")
 	}
+
 	if basePath == "/" {
 		basePath = ""
 	}
@@ -61,11 +65,30 @@ func main() {
 
 	addr := listener.Addr().(*net.TCPAddr)
 	portURL := addr.Port
-	log.Printf("Luochu listening on http://%s:%d%s/?token=%s", *host, portURL, basePath, token)
+	url := fmt.Sprintf("http://%s:%d%s/?token=%s", *host, portURL, basePath, token)
+	log.Printf("Luochu listening on %s", url)
 	log.Printf("The token is printed once and is required for every HTTP and WebSocket request")
+	if *openBrowser {
+		go openURL(url)
+	}
 
 	if err := http.Serve(listener, handler); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+func openURL(url string) {
+	var command *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		command = exec.Command("open", url)
+	case "linux":
+		command = exec.Command("xdg-open", url)
+	case "windows":
+		command = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
+	default:
+		return
+	}
+	_ = command.Start()
 }

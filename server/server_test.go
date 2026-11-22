@@ -46,6 +46,17 @@ func TestTokenQueryAndCapabilities(t *testing.T) {
 	}
 }
 
+func TestExternalImagesKeepReferrerPrivate(t *testing.T) {
+	s, prefix := testServer(t)
+	rec := request(s, http.MethodGet, prefix+"/?token=test-token", "")
+	if csp := rec.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "img-src 'self' http: https:") {
+		t.Fatalf("external images missing from CSP: %s", csp)
+	}
+	if policy := rec.Header().Get("Referrer-Policy"); policy != "no-referrer" {
+		t.Fatalf("referrer policy = %q", policy)
+	}
+}
+
 func TestTokenBearer(t *testing.T) {
 	s, prefix := testServer(t)
 	req := httptest.NewRequest(http.MethodGet, prefix+"/api/capabilities", nil)
