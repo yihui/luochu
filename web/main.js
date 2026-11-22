@@ -1,9 +1,9 @@
-import { parse, renderHTML } from "@djot/djot";
 import { EditorState, StateEffect, StateField } from "@codemirror/state";
 import { EditorView, Decoration, WidgetType, keymap } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import demo from "./demo.dj";
 import { tokenize } from "./tokens.js";
+import { renderDjotHTML } from "./render.js";
 
 function safeTableAlignmentHTML(html) {
   const template = document.createElement("template");
@@ -101,7 +101,7 @@ function buildDecorations(state) {
         const source = text.slice(from, to);
         const tableWidget = new Widget(`table:${source}`, () => {
           const wrapper = el("div", "dj-table-widget");
-          wrapper.innerHTML = safeTableAlignmentHTML(renderHTML(parse(source)));
+          wrapper.innerHTML = safeTableAlignmentHTML(renderDjotHTML(source));
           return wrapper;
         });
         const start = doc.lineAt(from).from, end = doc.lineAt(to - 1).to;
@@ -147,7 +147,7 @@ let renderPending = false,
   dirty = false,
   diskConflict = false;
 function renderPreview(text) {
-  pendingPreviewHTML = safeTableAlignmentHTML(renderHTML(parse(text, { sourcePositions: true })));
+  pendingPreviewHTML = safeTableAlignmentHTML(renderDjotHTML(text));
   if (previewReady) previewFrame.contentWindow.postMessage(
     { channel: "luochu-preview", type: "render", html: pendingPreviewHTML },
     "*",

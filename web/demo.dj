@@ -1,16 +1,87 @@
-# Luochu Djot demo
+# Djot visual demo {#top .title}
 
-Write _emphasized text_, *strong text*, and $`x^2 + y^2`.
+## Inline marks
 
-- [ ] Open task
-- [x] Completed task
+Plain text with _emphasis_, *strong*, {=highlight=}, {+inserted+}, {-deleted-},
+H~2~O and E=mc^2^, plus `verbatim *not* parsed` and {% a comment %} inline.
+Escapes: \* not bold, non-breaking\ space, a hard break follows\
+right here. Smart "quotes", it's, dashes -- en and --- em, and ellipsis...
 
-| Left | Right |
-|:-----|------:|
-| A | B |
+Inline raw: `<b>bold html</b>`{=html}. Inline math: $`x^2 + y^2 = z^2`.
+Display math: $$`\sum_{i=1}^n i = \frac{n(n+1)}{2}`.
+
+Symbol :smile: and a span [with class]{.note #span-id}.
+
+## Links and images
+
+Inline link [djot site](https://djot.net){title="Djot"}, reference link
+[the spec][spec], collapsed [spec][], autolink <https://example.com>, and an
+image ![placeholder](https://placehold.co/120x40 "A placeholder"){width=120}.
+
+Footnote reference here[^note].
+
+{.lead}
+A paragraph with block attributes above it.
+
+## Lists
+
+- bullet one
+- bullet two
+
+  - nested bullet
+
+1. ordered one
+2. ordered two
+
+a) letter list
+
+- [ ] open task
+- [x] finished task
+
+: Term
+
+  Definition text for the term.
+
+## Quote and break
+
+> A block quote with _emphasis_
+> spanning two lines.
+
+***
+
+## Code
+
+```python
+def hello():
+    return "world"
+```
 
 ``` r
 #| label: fig-demo
 #| echo: false
+#| fig.width: 6
 plot(1:10)
 ```
+
+``` =html
+<div class="raw">passed through for HTML only</div>
+```
+
+## Divs
+
+::: warning
+Fenced div content is block-level, with _markup_ inside.
+:::
+
+## Table
+
+| Left | Center | Right |
+|:-----|:------:|------:|
+| a    | b      | c     |
+| 1    | 2      | 3     |
+^ Table caption with *emphasis*.
+
+{title=Spec}
+[spec]: https://djot.net/
+
+[^note]: Footnote body, which can hold a paragraph.

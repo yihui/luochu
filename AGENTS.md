@@ -64,6 +64,8 @@ JavaScript source style:
 - Issue #5 is in progress on branch `stack/issue-5-preview`.
 - Added sandboxed iframe preview messaging, keyed block patching helpers,
   source-offset click/scroll messages, and preview script sanitization.
+- The bundled demo uses lite-edit prototype commit
+  `cabc7971ed4f496a146a764bf694e9b8f5c80fa4:src/demo.dj`.
 - Full visual widgets, document numbering, and LaTeX export remain follow-up
   work within Issue #5 unless split into focused follow-up issues.
 
