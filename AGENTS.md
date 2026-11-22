@@ -9,6 +9,12 @@ art and current implementation.
 
 ## Active work
 
+- Prioritize [#6](https://github.com/yihui/luochu/issues/6) (terminal and
+  agent CLIs), [#7](https://github.com/yihui/luochu/issues/7) (git and diff
+  review), then [#9](https://github.com/yihui/luochu/issues/9) (browser Wasm).
+  Issue #9 currently depends on #8's execution protocol and cache; reconcile
+  that dependency when starting #9 rather than claiming native-first and
+  shared-protocol support before it exists.
 - [#5](https://github.com/yihui/luochu/issues/5): Djot document experience;
   [PR #19](https://github.com/yihui/luochu/pull/19) is a partial implementation.
   Keep #5 open until its acceptance criteria are met.
@@ -16,10 +22,7 @@ art and current implementation.
   - [#21](https://github.com/yihui/luochu/issues/21): visual widget interactions.
   - [#22](https://github.com/yihui/luochu/issues/22): large-document performance.
   - [#23](https://github.com/yihui/luochu/issues/23): numbering and references.
-- [#6](https://github.com/yihui/luochu/issues/6): terminal and agent CLIs.
-- [#7](https://github.com/yihui/luochu/issues/7): git and diff review.
 - [#8](https://github.com/yihui/luochu/issues/8): native Djot execution.
-- [#9](https://github.com/yihui/luochu/issues/9): browser Wasm runtimes.
 - [#10](https://github.com/yihui/luochu/issues/10): export and migration.
 - [#11](https://github.com/yihui/luochu/issues/11): proxy and desktop validation.
 - [#12](https://github.com/yihui/luochu/issues/12): optional collaboration.
