@@ -135,6 +135,7 @@ const decoField = StateField.define({
 const previewFrame = document.querySelector("#preview-frame");
 let previewReady = false,
   pendingPreviewHTML = "";
+let syncingPreviewScroll = false;
 previewFrame.srcdoc = `<!doctype html><html>
 <head><meta charset="utf-8"><link rel="stylesheet" href="assets/preview.css"></head>
 <body><main id="preview"></main><script src="assets/preview.js"></script></body>
@@ -189,11 +190,15 @@ const applyMode = (visual) => {
 toggle.addEventListener("click", () => applyMode(!view.state.field(modeField)));
 
 view.scrollDOM.addEventListener("scroll", () => {
+  if (syncingPreviewScroll) return;
   const top = view.lineBlockAtHeight(view.scrollDOM.scrollTop).from;
   const line = view.state.doc.lineAt(top).number;
   const offset = view.state.doc.line(line).from;
+  const coords = view.coordsAtPos(offset);
+  const frameRect = previewFrame.getBoundingClientRect();
+  const viewportY = coords ? Math.max(0, coords.top - frameRect.top) : 0;
   if (previewReady) previewFrame.contentWindow.postMessage(
-    { channel: "luochu-preview", type: "scroll", offset },
+    { channel: "luochu-preview", type: "scroll", offset, viewportY },
     "*",
   );
 });
@@ -211,11 +216,18 @@ window.addEventListener("message", (event) => {
              event.data.type === "source-click") {
     const offset = event.data.offset;
     if (!Number.isFinite(offset)) return;
-    view.dispatch({
-      selection: { anchor: offset },
-      scrollIntoView: event.data.type === "source-click",
+    syncingPreviewScroll = true;
+    view.dispatch({ selection: { anchor: offset } });
+    requestAnimationFrame(() => {
+      const coords = view.coordsAtPos(offset);
+      if (!coords) return;
+      const frameRect = previewFrame.getBoundingClientRect();
+      const desiredTop = frameRect.top + (event.data.viewportY || 0);
+      const delta = coords.top - desiredTop;
+      view.scrollDOM.scrollTop += delta;
+      if (event.data.type === "source-click") view.focus();
+      requestAnimationFrame(() => { syncingPreviewScroll = false; });
     });
-    if (event.data.type === "source-click") view.focus();
   }
 });
 

@@ -1,7 +1,7 @@
-import { blockKey, sourceOffset } from "./preview-core.js";
+import { blockKey, clampedScrollTop, sourceOffset } from "./preview-core.js";
 
 const root = document.querySelector("#preview");
-let previousScroll = 0;
+let previousScroll = 0, syncingFromSource = false;
 
 function sanitizedTemplate(html) {
   const template = document.createElement("template");
@@ -55,22 +55,35 @@ window.addEventListener("message", (event) => {
       if (start <= offset) target = element;
       else break;
     }
-    if (target) target.scrollIntoView({ block: "start" });
+    if (target) {
+      syncingFromSource = true;
+      const elementTop = target.offsetTop;
+      const maxScroll = document.scrollingElement.scrollHeight - window.innerHeight;
+      document.scrollingElement.scrollTop =
+        clampedScrollTop(elementTop, event.data.viewportY, Math.max(0, maxScroll));
+      requestAnimationFrame(() => { syncingFromSource = false; });
+    }
   }
 });
 
 document.addEventListener("scroll", () => {
+  if (syncingFromSource) return;
   if (document.scrollingElement.scrollTop === previousScroll) return;
   previousScroll = document.scrollingElement.scrollTop;
   let target = null;
+  let targetTop = 0;
   for (const element of root.querySelectorAll("[data-startpos]")) {
     const rect = element.getBoundingClientRect();
-    if (rect.top <= window.innerHeight * 0.25) target = element;
-    else break;
+    if (rect.bottom <= 0) continue;
+    if (!target || Math.abs(rect.top) < targetTop) {
+      target = element;
+      targetTop = Math.abs(rect.top);
+    }
   }
   const offset = target ? sourceOffset(target) : null;
   if (offset !== null) parent.postMessage(
-    { channel: "luochu-preview", type: "source-scroll", offset },
+    { channel: "luochu-preview", type: "source-scroll",
+      offset, viewportY: target.getBoundingClientRect().top },
     "*",
   );
 }, true);
@@ -80,7 +93,8 @@ root.addEventListener("click", (event) => {
   if (!element) return;
   const offset = sourceOffset(element);
   if (offset !== null) parent.postMessage(
-    { channel: "luochu-preview", type: "source-click", offset },
+    { channel: "luochu-preview", type: "source-click",
+      offset, viewportY: element.getBoundingClientRect().top },
     "*",
   );
 });

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { tokenize } from "../web/tokens.js";
-import { blockKey, sourceOffset } from "../web/preview-core.js";
+import { blockKey, clampedScrollTop, sourceOffset } from "../web/preview-core.js";
 
 test("prototype Djot fixture produces stable span kinds", async () => {
   const text = await readFile(
@@ -31,6 +31,12 @@ test("preview block keys and source offsets stay stable", () => {
   };
   assert.equal(blockKey(element), "P:1:1:0");
   assert.equal(sourceOffset(element), 0);
+});
+
+test("preview scroll alignment clamps to the document bounds", () => {
+  assert.equal(clampedScrollTop(120, 40, 1000), 80);
+  assert.equal(clampedScrollTop(20, 40, 1000), 0);
+  assert.equal(clampedScrollTop(1200, 40, 1000), 1000);
 });
 
 
