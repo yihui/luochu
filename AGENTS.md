@@ -25,12 +25,15 @@ JavaScript source style:
   transport unless a measured requirement proves it necessary.
 - Never use decoration ranges that replace block/table/image constructs:
   replacement changes CodeMirror line geometry and cursor mapping.
-- Visual mode may hide markup or render inline widgets only when it preserves
-  source offsets and line mapping. The whole `.cm-scroller` stays in the visual
-  font; only source revealed on the cursor line or local source spans use
-  monospace.
-- Scroll sync has no reciprocal loop: source scroll may move preview, preview
-  click reveals source, and preview scroll does not continuously write source.
+- Visual mode hides inactive inline markup with CodeMirror replacements, split
+  at line boundaries; invisible text alone still occupies space. Reveal markup
+  on selected lines. Preserve source offsets and line mapping. The whole
+  `.cm-scroller` stays in the visual font; only revealed source uses monospace.
+- Never give `.cm-line` elements vertical margins: CodeMirror's line geometry
+  does not account for them correctly. Share heading typography with preview
+  headings, but apply document margins only to actual preview headings.
+- Scroll sync must avoid reciprocal feedback; preview-to-source scrolling is
+  still missing and must not be mistaken for a completed synchronization.
 - Visual mode is state, not a transient DOM font override. Reapply the visual
   class from `modeField` after every CodeMirror transaction; selection rebuilds
   must not remove visual mode or switch the whole editor to monospace.
@@ -56,8 +59,8 @@ JavaScript source style:
 3. Keep changes small and landable. Run the narrowest relevant tests.
 4. Add a handoff to this file whenever work changes progress, decisions,
    commands, or known blockers.
-5. Update the GitHub issue when substantial work is done. Record commits,
-   design decisions, tests, remaining work, and verification commands.
+5. Record progress, design decisions, tests, and remaining work here and in the
+   PR; do not post progress comments on GitHub issues.
 6. Close an issue only when its acceptance criteria are demonstrably met.
    Open follow-up issues instead of widening scope.
 7. Never silently change a resolved architecture decision. Record a change
@@ -80,20 +83,19 @@ JavaScript source style:
 | Proxy and desktop validation                    | [#11](https://github.com/yihui/luochu/issues/11) |                                              Open | Blocked by #2-#9                       |
 | Optional collaboration                          | [#12](https://github.com/yihui/luochu/issues/12) |                                              Open | Last; blocked by #2-#11                |
 
-**Recent handoff (2026-11-21):**
+**Current handoff (2026-11-22):**
 
-- Issue #5 is in progress on branch `stack/issue-5-preview`.
-- Added sandboxed iframe preview messaging, keyed block patching helpers,
-  source-offset click/scroll messages, and preview script sanitization.
-- The bundled demo uses lite-edit prototype commit
-  `cabc7971ed4f496a146a764bf694e9b8f5c80fa4:src/demo.dj`.
-- Full visual widgets, document numbering, and LaTeX export remain follow-up
-  work within Issue #5 unless split into focused follow-up issues.
-
-**Current state:** No implementation work or repository scaffold is present in
-the Luochu checkout yet. Issue #1 is the first step. All prior implementation
-plan detail has moved into issue bodies; future sessions should treat GitHub
-issues and this section as the source of truth.
+- Issue #5 is in progress on `stack/issue-5-preview` (PR #19). The demo uses
+  lite-edit prototype commit `cabc7971ed4f496a146a764bf694e9b8f5c80fa4`.
+- Shared heading CSS had applied vertical margins to CodeMirror lines, causing
+  cumulative cursor-position errors. Hidden link syntax also reserved its
+  full width. Browser tests now check real click coordinates, wrapped and
+  scrolled lines, and link spacing; `npm run test:cursor` runs the same tests.
+- Preview is currently rendered directly into the main DOM, **not sandboxed**.
+  Treat untrusted content isolation and the server's CSP/COEP changes as
+  unresolved security work before PR #19 can be considered production-ready.
+  Preview-to-source scroll sync, visual widgets, document numbering, export,
+  and the issue's performance measurements also remain incomplete.
 
 **Recent handoff (2026-11-21):**
 

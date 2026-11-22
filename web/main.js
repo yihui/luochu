@@ -15,49 +15,61 @@ const modeField = StateField.define({
 })
 
 function buildDecorations(state) {
-  const doc = state.doc, text = doc.toString()
-  const visual = state.field(modeField)
-  const cursorLine = doc.lineAt(state.selection.main.head).number
-  const items = [], lineSeen = new Set()
+  const doc = state.doc, text = doc.toString(), visual = state.field(modeField),
+    firstActiveLine = doc.lineAt(state.selection.main.from).number,
+    lastActiveLine = doc.lineAt(state.selection.main.to).number,
+    items = [], hidden = [], lineSeen = new Set();
 
   for (const token of tokenize(text)) {
-    const from = token.from, to = Math.min(token.to, text.length)
-    if (to < from) continue
-    const sameLine = doc.lineAt(from).number === doc.lineAt(Math.max(from, to - 1)).number
-    const touches = state.selection.main.from <= to && state.selection.main.to >= from
+    const from = token.from, to = Math.min(token.to, text.length);
+    if (to < from) continue;
     if (token.kind === 'line') {
-      const first = doc.lineAt(from).number
-      const last = doc.lineAt(Math.max(from, to - 1)).number
+      const first = doc.lineAt(from).number, last = doc.lineAt(Math.max(from, to - 1)).number;
       for (let line = first; line <= last; line++) {
-        const key = `${token.cls}:${line}`
-        if (lineSeen.has(key)) continue
-        lineSeen.add(key)
+        const key = `${token.cls}:${line}`;
+        if (lineSeen.has(key)) continue;
+        lineSeen.add(key);
         items.push({from: doc.line(line).from, to: doc.line(line).from,
-          decoration: Decoration.line({class: token.cls})})
+          decoration: Decoration.line({class: token.cls})});
       }
     } else if (token.kind === 'hr') {
-      if (to > from) items.push({from, to, decoration: Decoration.mark({class: 'dj-delim'})})
+      if (to > from) items.push({from, to, decoration: Decoration.mark({class: 'dj-delim'})});
     } else if (token.kind === 'delim') {
-      if (to > from)
-        items.push({from, to, decoration: Decoration.mark({
-          class: visual && doc.lineAt(from).number === cursorLine ? 'dj-delim dj-source' : 'dj-delim',
-        })})
+      if (!visual) {
+        if (to > from) items.push({from, to, decoration: Decoration.mark({class: 'dj-delim'})});
+      } else {
+        const first = doc.lineAt(from).number, last = doc.lineAt(Math.max(from, to - 1)).number;
+        for (let number = first; number <= last; number++) {
+          const line = doc.line(number), start = Math.max(from, line.from),
+            end = Math.min(to, line.to);
+          if (end <= start) continue;
+          if (number >= firstActiveLine && number <= lastActiveLine)
+            items.push({from: start, to: end,
+              decoration: Decoration.mark({class: 'dj-delim dj-source'})});
+          else hidden.push({from: start, to: end});
+        }
+      }
     } else if (token.kind === 'bullet') {
-      if (to > from) items.push({from, to, decoration: Decoration.mark({class: 'dj-delim'})})
+      if (to > from) items.push({from, to, decoration: Decoration.mark({class: 'dj-delim'})});
     } else if (token.kind === 'check') {
       if (to > from) items.push({from, to, decoration: Decoration.mark({
-        class: visual && doc.lineAt(from).number === cursorLine ? 'dj-checkbox dj-source' : 'dj-checkbox',
-      })})
+        class: visual && doc.lineAt(from).number >= firstActiveLine &&
+          doc.lineAt(from).number <= lastActiveLine ? 'dj-checkbox dj-source' : 'dj-checkbox',
+      })});
     } else if (to > from) {
-      const cls = token.kind === 'delim'
-        ? visual && doc.lineAt(from).number === cursorLine ? 'dj-delim dj-source' : 'dj-delim'
-        : token.kind === 'check'
-          ? visual && doc.lineAt(from).number === cursorLine ? 'dj-checkbox dj-source' : 'dj-checkbox'
-        : token.cls
-      items.push({from, to, decoration: Decoration.mark({class: cls})})
+      items.push({from, to, decoration: Decoration.mark({class: token.cls})});
     }
   }
-  return Decoration.set(items.map((item) => item.decoration.range(item.from, item.to)), true)
+  hidden.sort((a, b) => a.from - b.from || a.to - b.to);
+  const merged = [];
+  for (const range of hidden) {
+    const previous = merged[merged.length - 1];
+    if (previous && range.from <= previous.to) previous.to = Math.max(previous.to, range.to);
+    else merged.push({...range});
+  }
+  for (const range of merged)
+    items.push({...range, decoration: Decoration.replace({})});
+  return Decoration.set(items.map((item) => item.decoration.range(item.from, item.to)), true);
 }
 
 const decoField = StateField.define({
