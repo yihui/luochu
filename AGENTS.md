@@ -98,6 +98,9 @@ JavaScript source style:
 - Raw HTML block widgets use normal HTML whitespace instead of inheriting
   CodeMirror's `pre-wrap`; otherwise the raw block's trailing newline renders
   as an extra blank line. Nested `<pre>` elements retain their own whitespace.
+- The CodeMirror gutter shows source line numbers in both modes. Visual blocks
+  can hide source lines, so visible line numbers may skip; browser checks cover
+  alignment after wrapping, edits, and hidden block widgets.
 - Blockquote line decorations exclude the following unquoted blank line.
   The demo image uses Djot's `{title="..."}` attribute, not a quoted title
   inside the destination. Both editor and preview display the R logo.
@@ -112,8 +115,8 @@ JavaScript source style:
 - KaTeX and its fonts are local lazy-loaded assets. `../lite.js/js/render-katex.js`
   is prior art for equation labels/references; those are not implemented yet.
   DOMPurify is required to sanitize document HTML before inserting DOM nodes.
-  The initial app bundle is 129,979 bytes gzip (704 bytes above the prior
-  129,275-byte baseline); math adds 77,403 bytes JS and
+  The initial app bundle is 132,246 bytes gzip (2,267 bytes above the prior
+  129,979-byte baseline after enabling line numbers); math adds 77,403 bytes JS and
   4,168 bytes CSS gzip on demand, plus used fonts. The demo loads math at
   startup, so the two JS
   transfers together slightly exceed 200 KiB. Cold/warm timings are unmeasured.

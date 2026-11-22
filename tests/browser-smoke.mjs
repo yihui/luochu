@@ -95,6 +95,19 @@ try {
 
   const demo = await page.evaluate(() => window.__LUOCHU_EDITOR_VIEW__.state.doc.toString()),
     quote = "# Quote\n\n> first line\n> second line\n\nAfter quote.\n";
+  async function checkLineNumbers() {
+    await page.waitForFunction(() => {
+      const gutter = [...document.querySelectorAll(".cm-lineNumbers .cm-gutterElement")],
+        lines = [...document.querySelectorAll(".cm-line")];
+      return ["Plain text with", "O and E=mc"].every((text, index) => {
+        const line = lines.find((node) => node.textContent.includes(text)),
+          number = gutter.find((node) => node.textContent === String(index + 5));
+        return line && number && Math.abs(line.getBoundingClientRect().top -
+          number.getBoundingClientRect().top) <= 3;
+      });
+    });
+  }
+  await checkLineNumbers();
   for (const visual of [false, true]) {
     if (visual) await page.locator("#mode-toggle").click();
     await page.evaluate((text) => {
@@ -113,6 +126,14 @@ try {
     const actual = await page.evaluate(() => window.__LUOCHU_EDITOR_VIEW__.state.doc.toString());
     if (actual !== quote.replace("> second line\n\n", "> second line\n"))
       throw new Error(`Cannot delete the blank line after the blockquote in ${visual ? "visual" : "source"} mode`);
+    await page.waitForFunction(() => {
+      const line = [...document.querySelectorAll(".cm-line")].find((node) =>
+        node.textContent.includes("After quote.")),
+        number = [...document.querySelectorAll(".cm-lineNumbers .cm-gutterElement")]
+          .find((node) => node.textContent === "5");
+      return line && number && Math.abs(line.getBoundingClientRect().top -
+        number.getBoundingClientRect().top) <= 3;
+    });
   }
   await page.locator("#mode-toggle").click();
   await page.evaluate((text) => {
@@ -124,6 +145,7 @@ try {
   const demoSmart = await page.locator(".cm-line").filter({ hasText: "right here. Smart" }).textContent();
   if (!demoSmart.includes("Smart “quotes”, it’s, dashes – en and — em, and ellipsis…"))
     throw new Error(`Demo smart punctuation is incorrect: ${demoSmart}`);
+  await checkLineNumbers();
 
   async function clickText(text, index) {
     const target = await page.evaluate(async ({ text, index }) => {
@@ -134,14 +156,18 @@ try {
       while ((node = walker.nextNode())) {
         const start = node.data.indexOf(text);
         if (start < 0) continue;
-        node.parentElement.closest(".cm-line").scrollIntoView({ block: "center" });
-        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         const range = document.createRange();
         range.setStart(node, start + index);
         range.setEnd(node, start + index + 1);
-        const rect = range.getBoundingClientRect();
-        return { x: rect.left + rect.width * 0.25, y: (rect.top + rect.bottom) / 2,
-          expected: expected + index };
+        for (let attempt = 0; attempt < 10; attempt++) {
+          node.parentElement.closest(".cm-line").scrollIntoView({ block: "center" });
+          await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          const rect = range.getBoundingClientRect(), bounds = view.scrollDOM.getBoundingClientRect();
+          if (rect.top >= bounds.top && rect.bottom <= bounds.bottom)
+            return { x: rect.left + rect.width * 0.25, y: (rect.top + rect.bottom) / 2,
+              expected: expected + index };
+        }
+        throw new Error(`Could not scroll "${text}" into view`);
       }
       throw new Error(`Missing visible text node: ${text}`);
     }, { text, index });
@@ -519,6 +545,14 @@ try {
   if (Math.abs(rawGeometry.rawHeight - rawGeometry.lineHeight) > 2 ||
     Math.abs(rawGeometry.rawGap - rawGeometry.baselineGap) > 2)
     throw new Error(`Raw HTML block has extra whitespace: ${JSON.stringify(rawGeometry)}`);
+  await page.waitForFunction(() => {
+    const heading = [...document.querySelectorAll(".cm-line")].find((node) =>
+      node.textContent.includes("Divs")),
+      number = [...document.querySelectorAll(".cm-lineNumbers .cm-gutterElement")]
+        .find((node) => node.textContent === "9");
+    return heading && number && Math.abs(heading.getBoundingClientRect().top -
+      number.getBoundingClientRect().top) <= 3;
+  });
   await clickText("After raw block.", 5);
   await page.locator(".dj-raw-html .raw").click();
   if (!(await page.locator(".cm-content").textContent()).includes('``` =html'))

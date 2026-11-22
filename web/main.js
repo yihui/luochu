@@ -1,6 +1,6 @@
 import {parse, renderHTML} from '@djot/djot'
 import {EditorState, StateEffect, StateField} from '@codemirror/state'
-import {EditorView, keymap, Decoration} from '@codemirror/view'
+import {EditorView, keymap, Decoration, lineNumbers} from '@codemirror/view'
 import {defaultKeymap, history, historyKeymap} from '@codemirror/commands'
 import {tokenize} from './tokens.js'
 import {bullet, checkbox, image, footnote, footnoteLabel, math, table, rawHTML, renderPreviewMath,
@@ -159,7 +159,7 @@ const view = new EditorView({
     doc: demo,
     extensions: [
       history(), keymap.of([...defaultKeymap, ...historyKeymap]),
-      modeField, decoField, EditorView.lineWrapping,
+      modeField, decoField, EditorView.lineWrapping, lineNumbers(),
       EditorView.updateListener.of((update) => {
         view.dom.classList.toggle('visual', view.state.field(modeField))
         if (update.docChanged) schedulePreview()
