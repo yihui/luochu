@@ -61,3 +61,22 @@ test("blockquote styling excludes the following blank line but keeps quoted blan
   assert.equal(text.slice(quote.from, quote.to), "> first\n>\n> second");
 });
 
+test("smart punctuation retains source ranges and Djot-rendered characters", () => {
+  const text = `Smart "quotes", 'single', it's -- en --- em...`,
+    smart = tokenize(text).filter((token) => token.kind === "punctuation")
+      .sort((a, b) => a.from - b.from);
+  assert.deepEqual(smart.map((token) => token.text), ["“", "”", "‘", "’", "’", "–", "—", "…"]);
+  assert.deepEqual(smart.map((token) => text.slice(token.from, token.to)),
+    ['"', '"', "'", "'", "'", "--", "---", "..."]);
+});
+
+test("attribute and fence lines are tied to their owning blocks without eating blank lines", () => {
+  const text = "{.lead}\n\nText.\n\n```js\nbody\n```\n\n::: warning\ninside\n:::\n",
+    lines = tokenize(text).filter((token) => token.kind === "hidden_line");
+  assert.deepEqual(lines.map((line) => text.slice(line.from, line.to)),
+    ["{.lead}", "```js", "```", "::: warning", ":::"]);
+  assert.ok(lines[0].ownerTo > text.indexOf("Text."));
+  assert.ok(lines[1].ownerTo > text.indexOf("body"));
+  assert.ok(lines[3].ownerTo > text.indexOf("inside"));
+});
+

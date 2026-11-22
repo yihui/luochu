@@ -121,6 +121,9 @@ try {
       selection: { anchor: 0 } });
   }, demo);
   await page.locator("#mode-toggle").click();
+  const demoSmart = await page.locator(".cm-line").filter({ hasText: "right here. Smart" }).textContent();
+  if (!demoSmart.includes("Smart “quotes”, it’s, dashes – en and — em, and ellipsis…"))
+    throw new Error(`Demo smart punctuation is incorrect: ${demoSmart}`);
 
   async function clickText(text, index) {
     const target = await page.evaluate(async ({ text, index }) => {
@@ -357,6 +360,138 @@ try {
   const sourceStyles = await page.locator(".dj-insert").evaluate((node) =>
     getComputedStyle(node).textDecorationLine);
   if (!sourceStyles.includes("underline")) throw new Error("Source-mode inline styles are missing");
+
+  await page.locator("#mode-toggle").click();
+  const visualFixture = [
+    "Baseline first", "", "Baseline second", "",
+    'Smart "quotes", it\'s, dashes -- en and --- em, and ellipsis...', "",
+    "{.lead}", "{#id}", "Attributed paragraph.", "",
+    "```js", "code body one", "code body two", "```", "",
+    "::: warning", "div body text", ":::", "",
+    "***", "", ": Term", "", "  Definition text.", "", "After marker.",
+  ].join("\n");
+  await page.evaluate((text) => {
+    const view = window.__LUOCHU_EDITOR_VIEW__;
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text },
+      selection: { anchor: 0 } });
+  }, visualFixture);
+  const smart = await page.locator(".cm-line").filter({ hasText: "Smart" }).textContent();
+  if (smart !== "Smart “quotes”, it’s, dashes – en and — em, and ellipsis…")
+    throw new Error(`Smart punctuation is incorrect: ${JSON.stringify(smart)}`);
+  if (await page.locator(".dj-hr-widget").count() !== 1)
+    throw new Error("Horizontal rule is not rendered");
+  const termWeight = await page.locator(".dj-term").evaluate((node) =>
+    Number(getComputedStyle(node).fontWeight));
+  if (termWeight < 600) throw new Error("Definition term is not styled");
+  if ((await page.locator(".dj-term").locator("..").textContent()) !== "Term")
+    throw new Error("Definition marker leaves extra space");
+
+  const gaps = await page.evaluate(() => {
+    const lines = [...document.querySelectorAll(".cm-line")];
+    function rect(text) {
+      const line = lines.find((node) => node.textContent.includes(text));
+      if (!line) throw new Error(`Missing editor line: ${text}`);
+      return line.getBoundingClientRect();
+    }
+    return {
+      baseline: rect("Baseline second").top - rect("Baseline first").bottom,
+      attributes: rect("Attributed paragraph.").top - rect("Smart ").bottom,
+      openingFence: rect("code body one").top - rect("Attributed paragraph.").bottom,
+      closingFence: rect("div body text").top - rect("code body two").bottom,
+    };
+  });
+  for (const [name, gap] of Object.entries(gaps)) {
+    if (name !== "baseline" && Math.abs(gap - gaps.baseline) > 3)
+      throw new Error(`${name} leaves excess whitespace: ${JSON.stringify(gaps)}`);
+  }
+  if (!await page.locator(".cm-line").filter({ hasText: "code body one" })
+    .evaluate((line) => line.classList.contains("dj-code_block")))
+    throw new Error("Hiding the opening fence lost the code block styling");
+  await page.locator(".dj-punctuation").first().click();
+  const quotePosition = await page.evaluate(() => {
+    const view = window.__LUOCHU_EDITOR_VIEW__;
+    return { actual: view.state.selection.main.head, expected: view.state.doc.toString().indexOf('"quotes"') };
+  });
+  if (quotePosition.actual !== quotePosition.expected)
+    throw new Error("Clicking a smart quote did not reveal its source position");
+  await clickText("Attributed paragraph.", 5);
+  let visible = await page.locator(".cm-content").textContent();
+  if (!visible.includes("{.lead}") || !visible.includes("{#id}"))
+    throw new Error("Clicking the paragraph did not reveal its block attributes");
+  await clickText("code body one", 5);
+  visible = await page.locator(".cm-content").textContent();
+  if (!visible.includes("```js") || !visible.includes("```"))
+    throw new Error("Clicking the code block did not reveal its fences");
+  await clickText("div body text", 5);
+  visible = await page.locator(".cm-content").textContent();
+  if (!visible.includes("::: warning") || !visible.includes(":::"))
+    throw new Error("Clicking the div did not reveal its fences");
+  await page.locator(".dj-hr-widget").click();
+  if (!(await page.locator(".cm-content").textContent()).includes("***"))
+    throw new Error("Clicking the rule did not reveal its source");
+
+  await page.locator("#mode-toggle").click();
+  const source = await page.locator(".cm-content").textContent();
+  if (!source.includes("{.lead}") || !source.includes("```js") || !source.includes("::: warning"))
+    throw new Error("Source mode must retain attribute and fence lines");
+
+  await page.locator("#mode-toggle").click();
+  const nested = [
+    "Start", "", "{.panel}", "", "::: info", "Nested before", "",
+    "```r", "nested code body", "```", ":::", "",
+    "```js", "```", "", "::: note", ":::", "", "After empty blocks.",
+  ].join("\n");
+  await page.evaluate((text) => {
+    const view = window.__LUOCHU_EDITOR_VIEW__;
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text },
+      selection: { anchor: 0 } });
+  }, nested);
+  if (await page.locator(".dj-empty-block").count() !== 2)
+    throw new Error("Empty code and div blocks need clickable placeholders");
+  const preservedBlanks = await page.locator(".cm-line").evaluateAll((lines) => {
+    const first = lines.findIndex((line) => line.textContent === "Start"),
+      last = lines.findIndex((line) => line.textContent === "Nested before");
+    return lines.slice(first + 1, last).filter((line) => !line.textContent).length;
+  });
+  if (preservedBlanks !== 2)
+    throw new Error(`Explicit blank lines around attributes were lost: ${preservedBlanks}`);
+  visible = await page.locator(".cm-content").textContent();
+  if (visible.includes("{.panel}") || visible.includes("```") || visible.includes(":::"))
+    throw new Error("Inactive nested attributes or fences are visible");
+  await clickText("After empty blocks.", 5);
+  await page.getByText("Empty code block", { exact: true }).click();
+  if (!(await page.locator(".cm-content").textContent()).includes("```js"))
+    throw new Error("Empty code block did not reveal its fences");
+  await clickText("After empty blocks.", 5);
+  await page.getByText("Empty div", { exact: true }).click();
+  if (!(await page.locator(".cm-content").textContent()).includes("::: note"))
+    throw new Error("Empty div did not reveal its fences");
+  await clickText("nested code body", 5);
+  visible = await page.locator(".cm-content").textContent();
+  if (!visible.includes("{.panel}") || !visible.includes("::: info") || !visible.includes("```r"))
+    throw new Error("Clicking nested code did not reveal its owning attributes and fences");
+
+  const quotedFence = "Start\n\n> ```r\n> quoted code body\n> ```\n\nAfter quoted code.\n";
+  await page.evaluate((text) => {
+    const view = window.__LUOCHU_EDITOR_VIEW__;
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text },
+      selection: { anchor: 0 } });
+  }, quotedFence);
+  if ((await page.locator(".cm-content").textContent()).includes("```"))
+    throw new Error("Nested quoted code fences are visible");
+  await clickText("quoted code body", 5);
+  if (!(await page.locator(".cm-content").textContent()).includes("```r"))
+    throw new Error("Clicking quoted code did not reveal its fences");
+  await clickText("After quoted code.", 5);
+
+  await page.evaluate(() => {
+    const view = window.__LUOCHU_EDITOR_VIEW__, text = "Start\n\n```r\n";
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text },
+      selection: { anchor: 0 } });
+  });
+  await page.getByText("Empty code block", { exact: true }).click();
+  if (!(await page.locator(".cm-content").textContent()).includes("```r"))
+    throw new Error("Empty unclosed code block did not reveal its fence");
   if (errors.length) throw new Error(errors.join("\n"));
   console.log("Browser smoke: visual widgets, sanitized HTML, cursor clicks and proxy paths passed");
 } finally {

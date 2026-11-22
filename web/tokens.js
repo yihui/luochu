@@ -10,6 +10,9 @@ const SKIP = new Set(["para", "list", "section"]),
   ]),
   LEAF_SKIP = new Set(["str", "soft_break", "blankline", "hard_break"]),
   EVENT_TAGS = new Map([["linktext", "link"], ["imagetext", "image"]]),
+  SMART = {
+    left_single_quote: "‘", right_single_quote: "’", en_dash: "–", em_dash: "—", ellipses: "…",
+  },
   nameOf = (annot) => annot.slice(1).split("|")[0],
   subOf = (annot) => annot.split("|")[1];
 
@@ -31,11 +34,19 @@ export function tokenize(text) {
   const ast = parse(text, { sourcePositions: true }),
     inlineNames = collectTagNames(ast, isInline),
     blockNames = collectTagNames(ast, isBlock),
-    out = [], stack = [], pairs = [], footnoteNumbers = new Map(), tables = new Map();
+    out = [], stack = [], pairs = [], footnoteNumbers = new Map(), tables = new Map(), blocks = [];
 
   function collectNodes(node) {
     if (!node || typeof node !== "object") return;
+    if (node.pos && isBlock(node)) blocks.push(node);
     if (node.tag === "table") tables.set(node.pos.start.offset, node);
+    if (node.tag === "term") {
+      const children = (node.children || []).filter((child) => child.pos);
+      if (children.length) out.push({
+        kind: "mark", from: children[0].pos.start.offset,
+        to: children[children.length - 1].pos.end.offset + 1, cls: "dj-term",
+      });
+    }
     if ((node.tag === "raw_inline" || node.tag === "raw_block") && node.format === "html") {
       const from = node.pos.start.offset, end = node.pos.end.offset + 1,
         suffix = node.tag === "raw_inline" ? text.slice(end).match(/^\{=html\}/i)?.[0] || "" : "";
@@ -48,6 +59,7 @@ export function tokenize(text) {
     }
   }
   collectNodes(ast);
+  blocks.sort((a, b) => a.pos.start.offset - b.pos.start.offset);
 
   for (const event of parseEvents(text)) {
     const annot = event.annot;
@@ -75,6 +87,7 @@ export function tokenize(text) {
     const annot = event.annot, from = event.startpos, to = event.endpos + 1;
     if (LEAF_SKIP.has(annot)) return;
     if (LEAF_HIDE.has(annot)) return out.push({ kind: "delim", from, to });
+    if (SMART[annot]) return out.push({ kind: "punctuation", from, to, text: SMART[annot] });
     if (annot === "thematic_break") {
       const length = text.slice(from).match(/^[*-][*\- \t]*/)[0].trimEnd().length;
       return out.push({ kind: "hr", from, to: from + length });
@@ -119,22 +132,42 @@ export function tokenize(text) {
   function pairToken({ name, sub, open, close }) {
     if (SKIP.has(name)) return;
     const end = close ? close.endpos + 1 : text.length;
-    if (name === "block_attributes")
-      return out.push({
-        kind: "delim", from: open.startpos, to: close ? close.startpos : text.length,
-      });
+    if (name === "block_attributes") {
+      const after = close ? close.startpos : text.length,
+        to = after > open.startpos && text[after - 1] === "\n" ? after - 1 : after;
+      out.push({ kind: "delim", from: open.startpos, to });
+      if (close) {
+        const next = blocks.filter((node) => node.pos.start.offset >= after);
+        const target = next.find((node) =>
+          node.pos.start.offset === next[0].pos.start.offset && node.attributes);
+        if (target) {
+          const start = text.lastIndexOf("\n", open.startpos - 1) + 1,
+            ownerTo = Math.max(target.pos.end.offset + 1,
+              ...(target.children || []).map((child) => child.pos?.end.offset + 1 || 0));
+          out.push({ kind: "hidden_line", from: start, to,
+            ownerFrom: start, ownerTo: Math.min(ownerTo, text.length) });
+        }
+      }
+      return;
+    }
     if (WHOLE.has(name)) return out.push({ kind: "delim", from: open.startpos, to: end });
 
     if (inlineNames.has(name) || inlineNames.has(EVENT_TAGS.get(name) || "")) {
+      const quotes = name === "double_quoted" ? ["“", "”"]
+        : name === "single_quoted" ? ["‘", "’"] : null;
       const newlineClose = !close || text[close.startpos] === "\n";
       const openerEnd = name === "heading"
         ? open.startpos + text.slice(open.startpos).match(/^#+[ \t]*/)[0].length : open.endpos + 1;
-      out.push({ kind: "delim", from: open.startpos, to: openerEnd });
+      out.push(quotes
+        ? { kind: "punctuation", from: open.startpos, to: openerEnd, text: quotes[0] }
+        : { kind: "delim", from: open.startpos, to: openerEnd });
       const closerEnd = newlineClose ? (close ? close.startpos : text.length) : close.startpos;
       if (close && (name === "inline_math" || name === "display_math"))
         out.push({ kind: "math", from: open.startpos, to: end,
           expression: text.slice(openerEnd, closerEnd), display: name === "display_math" });
-      if (!newlineClose) out.push({ kind: "delim", from: close.startpos, to: close.endpos + 1 });
+      if (!newlineClose) out.push(quotes
+        ? { kind: "punctuation", from: close.startpos, to: close.endpos + 1, text: quotes[1] }
+        : { kind: "delim", from: close.startpos, to: close.endpos + 1 });
       if (closerEnd > openerEnd)
         out.push({ kind: "mark", from: openerEnd, to: closerEnd, cls: "dj-" + name });
     }
@@ -142,6 +175,23 @@ export function tokenize(text) {
       out.push({ kind: "delim", from: open.startpos, to: open.endpos + 1 });
       if (close && /^[`:]/.test(text[close.startpos]))
         out.push({ kind: "delim", from: close.startpos, to: close.endpos + 1 });
+      const first = text.lastIndexOf("\n", open.startpos - 1) + 1,
+        newline = text.indexOf("\n", open.startpos),
+        closed = close && /^[`:]/.test(text[close.startpos]),
+        last = closed ? text.lastIndexOf("\n", close.startpos - 1) + 1 : text.length;
+      if (newline >= 0 && newline + 1 <= last) {
+        out.push({ kind: "hidden_line", from: first, to: newline,
+          ownerFrom: first, ownerTo: end });
+        if (newline + 1 === last)
+          out.push({ kind: "empty_block", from: last, to: last, ownerFrom: first,
+            ownerTo: end, label: name === "div" ? "Empty div" : "Empty code block" });
+        if (closed) {
+          const closingNewline = text.indexOf("\n", close.startpos);
+          out.push({ kind: "hidden_line", from: last,
+            to: closingNewline < 0 ? text.length : closingNewline,
+            ownerFrom: first, ownerTo: end });
+        }
+      }
     }
     if (name === "block_quote") {
       let pos = open.startpos;
@@ -170,7 +220,8 @@ export function tokenize(text) {
       )
         out.push({ kind: "bullet", from: open.startpos, to: open.endpos + 1 });
       else if (sub === ":")
-        out.push({ kind: "mark", from: open.startpos, to: open.endpos + 1, cls: "dj-defmark" });
+        out.push({ kind: "delim", from: open.startpos,
+          to: open.endpos + 1 + text.slice(open.endpos + 1).match(/^[ \t]*/)[0].length });
       else out.push({ kind: "mark", from: open.startpos, to: open.endpos + 1, cls: "dj-listnum" });
     }
     if (blockNames.has(name)) {

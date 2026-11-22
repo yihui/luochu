@@ -26,6 +26,30 @@ function revealSource(node, view, from) {
 
 export const bullet = new Widget("bullet", () => element("span", "dj-bullet", "•"));
 
+export function punctuation(token) {
+  return new Widget(`punctuation:${token.from}:${token.text}`, (view) => {
+    const node = element("span", "dj-punctuation", token.text);
+    revealSource(node, view, token.from);
+    return node;
+  });
+}
+
+export function rule(from) {
+  return new Widget(`rule:${from}`, (view) => {
+    const node = element("span", "dj-hr-widget");
+    revealSource(node, view, from);
+    return node;
+  });
+}
+
+export function emptyBlock(token) {
+  return new Widget(`empty:${token.ownerFrom}:${token.label}`, (view) => {
+    const node = element("div", "dj-empty-block", token.label);
+    revealSource(node, view, token.ownerFrom);
+    return node;
+  });
+}
+
 export function checkbox(token) {
   return new Widget(`check:${token.from}:${token.checked}`, (view) => {
     const node = element("input", "dj-check");

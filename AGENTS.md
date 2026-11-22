@@ -90,6 +90,11 @@ JavaScript source style:
   The demo contains math, so it loads on startup. Preview updates read the
   latest document after coalescing edits. Math and image widgets reveal their
   source when clicked, including after edits move their positions.
+- Visual mode renders Djot smart punctuation and horizontal rules, and styles
+  definition terms. Inactive block-attribute and code/div fence lines use
+  zero-height CodeMirror block replacements; selecting their owning block
+  reveals the source. Preserve actual blank lines, source offsets, nesting,
+  and clickable placeholders for empty blocks when changing this behavior.
 - Blockquote line decorations exclude the following unquoted blank line.
   The demo image uses Djot's `{title="..."}` attribute, not a quoted title
   inside the destination. Both editor and preview display the R logo.
@@ -104,7 +109,8 @@ JavaScript source style:
 - KaTeX and its fonts are local lazy-loaded assets. `../lite.js/js/render-katex.js`
   is prior art for equation labels/references; those are not implemented yet.
   DOMPurify is required to sanitize document HTML before inserting DOM nodes.
-  The initial app bundle is 129,275 bytes gzip; math adds 77,403 bytes JS and
+  The initial app bundle is 129,979 bytes gzip (704 bytes above the prior
+  129,275-byte baseline); math adds 77,403 bytes JS and
   4,168 bytes CSS gzip on demand, plus used fonts. The demo loads math at
   startup, so the two JS
   transfers together slightly exceed 200 KiB. Cold/warm timings are unmeasured.
@@ -214,8 +220,9 @@ These are implementation defaults, not invitations to reopen discussion:
 When a session reaches a material decision or completes a deliverable, update:
 
 1. This progress table: status, issue outcome, and next step.
-2. The GitHub issue: decision, files changed, tests, blockers, and follow-ups.
-3. A pull request or commit if the repository and task policy call for one.
+2. The pull request: decision, files changed, tests, blockers, and follow-ups.
+   Do not post progress comments on GitHub issues.
+3. A commit if the repository and task policy call for one.
 4. An open-question section below only for decisions that are genuinely unresolved.
 
 Use this handoff structure at the end of a substantial task:
@@ -272,5 +279,6 @@ npm run test:browser
 ```
 
 The browser smoke test starts and stops a real Luochu server, launches
-headless Chromium, verifies iframe rendering, and checks source/preview click
-and scroll synchronization plus CSP/sandbox console errors.
+headless Chromium, verifies visual widgets and preview rendering, and checks
+cursor positioning, available scroll synchronization, and CSP console errors.
+Preview isolation and preview-to-source scroll synchronization remain unfinished.

@@ -3,7 +3,8 @@ import {EditorState, StateEffect, StateField} from '@codemirror/state'
 import {EditorView, keymap, Decoration} from '@codemirror/view'
 import {defaultKeymap, history, historyKeymap} from '@codemirror/commands'
 import {tokenize} from './tokens.js'
-import {bullet, checkbox, image, footnote, footnoteLabel, math, table, rawHTML, renderPreviewMath}
+import {bullet, checkbox, image, footnote, footnoteLabel, math, table, rawHTML, renderPreviewMath,
+  punctuation, rule, emptyBlock}
   from './widgets.js'
 import {imageURL} from './urls.js'
 import {sanitizeHTML} from './safe-html.js'
@@ -26,7 +27,8 @@ function buildDecorations(state) {
     items = [], hidden = [], lineSeen = new Set(), tokens = tokenize(text), widgets = [],
     invalidImages = tokens.filter((token) => token.kind === 'image' &&
       (!token.src || !imageURL(token.src, currentPath))),
-    selection = state.selection.main;
+    selection = state.selection.main, markupLines = tokens.filter((token) => token.kind === 'hidden_line'),
+    activeMarkup = (token) => selection.from <= token.ownerTo && selection.to >= token.ownerFrom;
 
   if (visual) {
     for (const kind of ['table', 'raw', 'image', 'math', 'footnote', 'footnote_label']) {
@@ -50,6 +52,18 @@ function buildDecorations(state) {
         items.push({from, to, decoration: Decoration.replace({widget, block})});
       }
     }
+    for (const token of tokens.filter((item) => item.kind === 'empty_block')) {
+      if (activeMarkup(token) ||
+        widgets.some((item) => token.ownerFrom < item.to && token.ownerTo > item.from)) continue;
+      items.push({from: token.from, to: token.to,
+        decoration: Decoration.widget({widget: emptyBlock(token), block: true, side: -1})});
+    }
+    for (const line of markupLines) {
+      if (line.to <= line.from || activeMarkup(line) ||
+        widgets.some((item) => line.from < item.to && line.to > item.from)) continue;
+      widgets.push({from: line.from, to: line.to});
+      items.push({from: line.from, to: line.to, decoration: Decoration.replace({block: true})});
+    }
   }
   for (const token of tokens) {
     const from = token.from, to = Math.min(token.to, text.length);
@@ -68,7 +82,13 @@ function buildDecorations(state) {
     } else if (widgets.some((item) => from >= item.from && to <= item.to)) {
       continue;
     } else if (token.kind === 'hr') {
-      if (to > from) items.push({from, to, decoration: Decoration.mark({class: 'dj-delim'})});
+      if (to > from) items.push({from, to, decoration: visual &&
+        !(selection.from <= to && selection.to >= from)
+        ? Decoration.replace({widget: rule(from)}) : Decoration.mark({class: 'dj-delim dj-source'})});
+    } else if (token.kind === 'punctuation') {
+      if (to > from) items.push({from, to, decoration: visual &&
+        !(selection.from <= to && selection.to >= from)
+        ? Decoration.replace({widget: punctuation(token)}) : Decoration.mark({class: 'dj-source'})});
     } else if (token.kind === 'delim') {
       if (!visual || invalidImages.some((item) => from >= item.from && to <= item.to)) {
         if (to > from) items.push({from, to, decoration: Decoration.mark({
@@ -80,7 +100,8 @@ function buildDecorations(state) {
           const line = doc.line(number), start = Math.max(from, line.from),
             end = Math.min(to, line.to);
           if (end <= start) continue;
-          if (number >= firstActiveLine && number <= lastActiveLine)
+          if (number >= firstActiveLine && number <= lastActiveLine ||
+            markupLines.some((line) => from >= line.from && to <= line.to && activeMarkup(line)))
             items.push({from: start, to: end,
               decoration: Decoration.mark({class: 'dj-delim dj-source'})});
           else hidden.push({from: start, to: end});
