@@ -23,6 +23,9 @@ JavaScript source style:
 - Keep source compact. Put simple declarations, selectors, arguments, and
   short objects on one line; break a line only when it exceeds roughly 100
   characters or nesting/semantics require it.
+- Prefer em-based CSS lengths over px.
+- Avoid `!important`; use specificity or cascade order unless an override
+  is genuinely unavoidable.
 
 1. Work one issue at a time. Read the issue before editing:
    `gh issue view <number> --repo yihui/luochu`
