@@ -137,10 +137,10 @@ const decoField = StateField.define({
   provide: (field) => EditorView.decorations.from(field),
 })
 
-const preview = document.querySelector('#preview')
 const previewPane = document.querySelector('#preview-pane')
-let renderPending = false
+let preview = null, renderPending = false
 function renderPreview(text) {
+  if (!preview) return
   preview.replaceChildren(sanitizeHTML(renderHTML(parse(text, {sourcePositions: true})), currentPath))
   renderPreviewMath(preview)
 }
@@ -171,8 +171,6 @@ const view = new EditorView({
     ],
   }),
 })
-renderPreview(demo)
-
 const toggle = document.querySelector('#mode-toggle')
 const applyMode = (visual) => {
   view.dom.classList.toggle('visual', visual)
@@ -188,7 +186,7 @@ view.scrollDOM.addEventListener('scroll', () => {
   if (syncFromPreview) return
   clearTimeout(sourceScrollTimer)
   sourceScrollTimer = setTimeout(() => {
-    if (syncFromPreview) return
+    if (syncFromPreview || !preview) return
     const top = view.lineBlockAtHeight(view.scrollDOM.scrollTop).from
     const line = view.state.doc.lineAt(top).number
     let target = null
@@ -196,19 +194,29 @@ view.scrollDOM.addEventListener('scroll', () => {
       if (Number(element.dataset.startpos.split(':')[0]) <= line) target = element
       else break
     }
-    if (target) previewPane.scrollTop = target.offsetTop - previewPane.offsetTop
+    if (target) previewPane.contentWindow.scrollTo(0, target.offsetTop)
   }, 80)
 })
 
-preview.addEventListener('click', (event) => {
-  const element = event.target.closest('[data-startpos]')
-  if (!element) return
-  syncFromPreview = true
-  const offset = Number(element.dataset.startpos.split(':')[2])
-  view.dispatch({selection: {anchor: offset}, scrollIntoView: true})
-  view.focus()
-  setTimeout(() => { syncFromPreview = false }, 100)
-})
+function initPreview() {
+  const next = previewPane.contentDocument?.querySelector('#preview')
+  if (!next || next === preview) return
+  preview = next
+  preview.addEventListener('click', (event) => {
+    if (event.target.closest('a')) event.preventDefault()
+    const element = event.target.closest('[data-startpos]')
+    if (!element || !/^\d+:\d+:\d+$/.test(element.dataset.startpos)) return
+    const offset = Number(element.dataset.startpos.split(':')[2])
+    if (!Number.isSafeInteger(offset) || offset > view.state.doc.length) return
+    syncFromPreview = true
+    view.dispatch({selection: {anchor: offset}, scrollIntoView: true})
+    view.focus()
+    setTimeout(() => { syncFromPreview = false }, 100)
+  })
+  renderPreview(view.state.doc.toString())
+}
+previewPane.addEventListener('load', initPreview)
+initPreview()
 
 window.__LUOCHU_EDITOR_VIEW__ = view
 

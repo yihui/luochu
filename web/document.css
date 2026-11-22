@@ -3,7 +3,9 @@
   --muted: #777;
   --code-bg: #f4f4f4;
   --hl: #fff3a3;
+  --accent: #2b6cb0;
 }
+body { color: var(--fg); font: 1em/1.6 system-ui, sans-serif; }
 .visual {
   .cm-content { font-family: system-ui, sans-serif; }
   .dj-delim { text-decoration: none; }

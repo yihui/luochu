@@ -13,12 +13,14 @@ await esbuild.build({
   define: { "process.env.NODE_ENV": '"production"' },
   external: ["./math.js"],
 });
-await esbuild.build({
-  entryPoints: ["web/app.css"],
-  bundle: true,
-  outfile: "server/static/assets/app.css",
-  minify: true,
-});
+for (const name of ["app", "preview"]) {
+  await esbuild.build({
+    entryPoints: [`web/${name}.css`],
+    bundle: true,
+    outfile: `server/static/assets/${name}.css`,
+    minify: true,
+  });
+}
 await esbuild.build({
   entryPoints: ["web/math.js"],
   bundle: true,

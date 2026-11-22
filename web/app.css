@@ -1,10 +1,10 @@
 @import "./document.css";
-:root { --bg: #fff; --accent: #2b6cb0; }
+:root { --bg: #fff; }
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
 body {
   display: grid; grid-template-rows: 2.375em minmax(0, 1fr);
-  background: var(--bg); color: var(--fg); font: 1em/1.6 system-ui, sans-serif;
+  background: var(--bg);
   header {
     display: flex; align-items: center; gap: 0.625em;
     padding: 0.25em 0.625em; border-bottom: 1px solid #cfcfcf;
@@ -20,12 +20,7 @@ body {
   }
 }
 #editor, #preview-pane { min-height: 0; overflow: auto; }
-#preview-pane { border-left: 1px solid #cfcfcf; padding: 0 1em; }
-#preview {
-  [data-startpos] { cursor: pointer; }
-  img { max-width: 100%; }
-  pre { background: var(--code-bg); padding: 0.625em; overflow: auto; }
-}
+#preview-pane { width: 100%; height: 100%; border: 0; border-left: 1px solid #cfcfcf; }
 .cm-editor {
   height: 100%;
   .cm-scroller { font-family: ui-monospace, monospace; }

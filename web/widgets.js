@@ -109,25 +109,27 @@ export function footnoteLabel(token) {
 }
 
 let mathModule;
-function loadMath() {
-  if (!mathModule) {
-    const link = element("link");
+const mathStyles = new WeakMap();
+function loadMath(doc = document) {
+  if (!mathStyles.has(doc)) {
+    const link = doc.createElement("link");
     link.rel = "stylesheet";
     link.href = new URL("assets/math.css", document.baseURI).href;
     const stylesheet = new Promise((resolve, reject) => {
       link.onload = resolve;
       link.onerror = () => reject(new Error("Could not load math stylesheet"));
     });
-    document.head.append(link);
-    mathModule = Promise.all([import("./math.js"), stylesheet]).then(([module]) => module);
+    doc.head.append(link);
+    mathStyles.set(doc, stylesheet);
   }
-  return mathModule;
+  if (!mathModule) mathModule = import("./math.js");
+  return Promise.all([mathModule, mathStyles.get(doc)]).then(([module]) => module);
 }
 
 export function renderPreviewMath(root) {
   const nodes = root.querySelectorAll(".math.inline, .math.display");
   if (!nodes.length) return;
-  loadMath().then(({ renderMath }) => {
+  loadMath(root.ownerDocument).then(({ renderMath }) => {
     for (const node of nodes) {
       if (!node.isConnected) continue;
       const expression = node.textContent.slice(2, -2);

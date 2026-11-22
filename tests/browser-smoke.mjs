@@ -56,7 +56,8 @@ try {
     view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: "First edit." } });
     view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: "Math $`x^2`." } });
   });
-  await noMathPage.waitForSelector("#preview .math .katex", { timeout: 5000 });
+  await noMathPage.frameLocator("#preview-pane").locator("#preview .math .katex")
+    .waitFor({ timeout: 5000 });
   if (mathRequests.length !== 2) throw new Error("KaTeX assets did not load when math appeared");
   await noMathPage.close();
 
@@ -86,12 +87,37 @@ try {
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto(`http://127.0.0.1:${port}/proxy/?token=${token}`);
   await page.waitForFunction(() => window.__LUOCHU_EDITOR_VIEW__);
+  const preview = page.frameLocator("#preview-pane");
+  await preview.locator("#preview [data-startpos]").first().waitFor();
 
-  const previewCount = await page.locator("#preview [data-startpos]").count();
+  const previewCount = await preview.locator("#preview [data-startpos]").count();
   if (previewCount < 10) throw new Error(`preview has only ${previewCount} blocks`);
-  const demoImage = await page.locator("#preview img").first().getAttribute("src");
+  const demoImage = await preview.locator("#preview img").first().getAttribute("src");
   if (demoImage !== "https://www.r-project.org/Rlogo.png")
     throw new Error(`Demo preview image URL is incorrect: ${demoImage}`);
+  const isolation = await page.evaluate(() => {
+    const frame = document.querySelector("#preview-pane"), script = frame.contentDocument.createElement("script");
+    script.textContent = "parent.__sandboxExecuted = true";
+    frame.contentDocument.body.append(script);
+    script.remove();
+    return { sandbox: frame.getAttribute("sandbox"), executed: !!window.__sandboxExecuted,
+      outside: !!document.querySelector("#preview") };
+  });
+  if (isolation.sandbox !== "allow-same-origin" || isolation.executed || isolation.outside)
+    throw new Error(`Preview is not isolated: ${JSON.stringify(isolation)}`);
+  const blockedScript = errors.findIndex((error) =>
+    error.includes("Blocked script execution") && error.includes("sandboxed"));
+  if (blockedScript < 0) throw new Error("Sandbox did not report blocking the injected script");
+  errors.splice(blockedScript, 1);
+  const previewLink = preview.locator("a").filter({ hasText: "djot site" });
+  const expectedLink = Number((await previewLink.getAttribute("data-startpos")).split(":")[2]);
+  await previewLink.click();
+  const linkResult = await page.evaluate(() => ({
+    selection: window.__LUOCHU_EDITOR_VIEW__.state.selection.main.head,
+    url: document.querySelector("#preview-pane").contentWindow.location.href,
+  }));
+  if (linkResult.selection !== expectedLink || linkResult.url !== "about:srcdoc")
+    throw new Error(`Preview link click did not reveal source safely: ${JSON.stringify(linkResult)}`);
 
   const demo = await page.evaluate(() => window.__LUOCHU_EDITOR_VIEW__.state.doc.toString()),
     quote = "# Quote\n\n> first line\n> second line\n\nAfter quote.\n";
@@ -232,6 +258,8 @@ try {
   await page.waitForFunction(() => document.querySelector(".cm-content").textContent
     .includes("Deep target paragraph."));
   await clickText("Deep target paragraph.", 8);
+  await page.waitForFunction(() =>
+    document.querySelector("#preview-pane").contentWindow.scrollY > 0);
 
   const margins = await page.locator(".cm-line").evaluateAll((lines) => lines.map((line) => ({
     text: line.textContent, top: parseFloat(getComputedStyle(line).marginTop),
@@ -268,7 +296,11 @@ try {
   await page.waitForSelector(".dj-math .katex");
   if (await page.locator(".dj-math .katex").count() !== 3)
     throw new Error("inline and display math did not render");
-  await page.waitForSelector("#preview .math.display .mfrac");
+  await preview.locator("#preview .math.display .mfrac").waitFor();
+  const previewMathFont = await preview.locator("#preview .math .katex").first()
+    .evaluate((node) => getComputedStyle(node).fontFamily);
+  if (!previewMathFont.includes("KaTeX"))
+    throw new Error(`Preview math stylesheet was not applied: ${previewMathFont}`);
   if (await page.locator(".dj-math .katex-error").count())
     throw new Error("Valid math did not render correctly");
   if (await page.locator('.katex a[href^="javascript:"]').count())
@@ -313,7 +345,7 @@ try {
   if (!imageRequest || imageRequest.headers().referer)
     throw new Error("External image failed or sent a referrer");
   await page.waitForFunction(() => {
-    const images = [...document.querySelectorAll("#preview img")];
+    const images = [...document.querySelector("#preview-pane").contentDocument.querySelectorAll("#preview img")];
     return images.length === 2 && images.every((img) => img.complete && img.naturalWidth > 0);
   }, null, { timeout: 5000 });
   await page.locator('.dj-image img[alt="R logo"]').click();
@@ -343,8 +375,9 @@ try {
     throw new Error("Sanitized raw HTML did not render");
   const unsafe = await page.evaluate(() => ({
     executed: window.__pwned,
-    elements: document.querySelectorAll(".dj-raw-html script, #preview script, " +
-      ".raw-safe[onclick], .raw-safe[style], .raw-block[onclick], .bad-link[href^='javascript:']").length,
+    elements: [document, document.querySelector("#preview-pane").contentDocument].reduce((count, doc) =>
+      count + doc.querySelectorAll(".dj-raw-html script, #preview script, " +
+        ".raw-safe[onclick], .raw-safe[style], .raw-block[onclick], .bad-link[href^='javascript:']").length, 0),
   }));
   if (unsafe.executed || unsafe.elements || unsafeRequest)
     throw new Error(`Unsafe raw HTML was retained: ${JSON.stringify(unsafe)}`);
