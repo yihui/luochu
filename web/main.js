@@ -81,42 +81,29 @@ function buildDecorations(state) {
           decoration: Decoration.line({ class: token.cls }) });
       }
     } else if (token.kind === "delim") {
-      if (visual && sameLine && doc.lineAt(from).number !== cursorLine && to > from)
-        items.push({ from, to, decoration: Decoration.replace({}) });
-      else if (to > from)
-        items.push({ from, to, decoration: Decoration.mark({ class: "dj-delim dj-source" }) });
+      // Never replace markup ranges in visual mode: replacing ranges changes
+      // CodeMirror line count/geometry and moves selection anchors.
+      if (to > from)
+        items.push({
+          from,
+          to,
+          decoration: Decoration.mark({ class: visual && doc.lineAt(from).number === cursorLine
+            ? "dj-delim dj-source" : "dj-delim" }),
+        });
     } else if (token.kind === "bullet") {
-      if (visual && doc.lineAt(from).number !== cursorLine)
-        items.push({ from, to, decoration: Decoration.replace({ widget: bullet }) });
-      else items.push({ from, to, decoration: Decoration.mark({ class: "dj-delim" }) });
+      items.push({ from, to, decoration: Decoration.mark({ class: "dj-delim" }) });
     } else if (token.kind === "check") {
-      if (visual)
-        items.push({ from, to, decoration: Decoration.replace({ widget: checkbox(token) }) });
-      else items.push({ from, to, decoration: Decoration.mark({ class: "dj-checkbox" }) });
+      items.push({ from, to, decoration: Decoration.mark({
+        class: visual ? "dj-checkbox dj-source" : "dj-checkbox",
+      }) });
     } else if (token.kind === "hr") {
-      if (!touches) items.push({ from, to, decoration: Decoration.replace({ widget: hr }) });
-      else items.push({ from, to, decoration: Decoration.mark({ class: "dj-delim" }) });
+      items.push({ from, to, decoration: Decoration.mark({ class: "dj-hr" }) });
     } else if (token.kind === "table") {
-      if (visual && !touches) {
-        const source = text.slice(from, to);
-        const tableWidget = new Widget(`table:${source}`, () => {
-          const wrapper = el("div", "dj-table-widget");
-          wrapper.innerHTML = safeTableAlignmentHTML(renderHTML(parse(source)));
-          return wrapper;
-        });
-        const start = doc.lineAt(from).from, end = doc.lineAt(to - 1).to;
-        items.push({ from: start, to: end,
-          decoration: Decoration.replace({ widget: tableWidget, block: true }) });
-      }
+      // Block replacements change CodeMirror line geometry; keep source text
+      // visible until range mapping supports widget positions.
+      if (visual) items.push({ from, to, decoration: Decoration.mark({ class: "dj-table" }) });
     } else if (token.kind === "image") {
-      if (visual && !touches) {
-        const imageWidget = new Widget(`image:${token.src}:${token.alt}`, () => {
-          const wrapper = el("span", "dj-image"), image = el("img");
-          image.src = token.src; image.alt = token.alt; wrapper.append(image);
-          return wrapper;
-        });
-        items.push({ from, to, decoration: Decoration.replace({ widget: imageWidget }) });
-      }
+      if (visual) items.push({ from, to, decoration: Decoration.mark({ class: "dj-image" }) });
     } else if (to > from)
       items.push({ from, to, decoration: Decoration.mark({ class: token.cls }) });
   }
@@ -186,6 +173,7 @@ const view = new EditorView({
     ],
   }),
 });
+window.__LUOCHU_EDITOR_VIEW__ = view;
 renderPreview(demo);
 
 const toggle = document.querySelector("#mode-toggle");
