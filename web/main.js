@@ -1,326 +1,210 @@
-import { EditorState, StateEffect, StateField } from "@codemirror/state";
-import { EditorView, Decoration, WidgetType, keymap } from "@codemirror/view";
-import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
-import demo from "./demo.dj";
-import { tokenize } from "./tokens.js";
-import { parse, renderHTML } from "@djot/djot";
+import {parse, renderHTML} from '@djot/djot'
+import {EditorState, StateEffect, StateField} from '@codemirror/state'
+import {EditorView, keymap, Decoration} from '@codemirror/view'
+import {defaultKeymap, history, historyKeymap} from '@codemirror/commands'
+import {tokenize} from './tokens.js'
+import demo from './demo.dj'
 
-function safeTableAlignmentHTML(html) {
-  const template = document.createElement("template");
-  template.innerHTML = html;
-  for (const cell of template.content.querySelectorAll("th, td")) {
-    const style = cell.getAttribute("style");
-    if (!style) continue;
-    const match = /^text-align:\s*(left|center|right);?$/.exec(style.trim());
-    if (match) {
-      cell.classList.add(`dj-al-${match[1]}`);
-      cell.removeAttribute("style");
-    }
-  }
-  return template.innerHTML;
-}
-
-const setMode = StateEffect.define(), modeField = StateField.define({
+const setMode = StateEffect.define()
+const modeField = StateField.define({
   create: () => false,
-  update(value, transaction) {
-    for (const effect of transaction.effects) if (effect.is(setMode)) value = effect.value;
-    return value;
+  update: (value, tr) => {
+    for (const effect of tr.effects) if (effect.is(setMode)) value = effect.value
+    return value
   },
-});
-
-class Widget extends WidgetType {
-  constructor(key, make) { super(); this.key = key; this.make = make; }
-  eq(other) { return this.key === other.key; }
-  toDOM(view) { return this.make(view); }
-  ignoreEvent() { return false; }
-}
-
-const el = (tag, className, text) => {
-  const element = document.createElement(tag);
-  if (className) element.className = className;
-  if (text != null) element.textContent = text;
-  return element;
-};
-
-const bullet = new Widget("bullet", () => el("span", "dj-bullet", "•")),
-  hr = new Widget("hr", () => el("span", "dj-hr-widget"));
-
-function checkbox(token) {
-  return new Widget(`check:${token.from}:${token.checked}`, (view) => {
-    const input = el("input", "dj-check");
-    input.type = "checkbox";
-    input.checked = token.checked;
-    input.onmousedown = (event) => {
-      event.preventDefault();
-      view.dispatch({ changes: {
-        from: token.from + 1, to: token.from + 2, insert: token.checked ? " " : "x",
-      } });
-    };
-    return input;
-  });
-}
+})
 
 function buildDecorations(state) {
-  const visual = state.field(modeField), doc = state.doc, text = doc.toString();
-  const selection = state.selection.main, cursorLine = doc.lineAt(selection.head).number;
-  const items = [], lineSeen = new Set();
+  const doc = state.doc, text = doc.toString()
+  const visual = state.field(modeField)
+  const cursorLine = doc.lineAt(state.selection.main.head).number
+  const items = [], lineSeen = new Set()
 
   for (const token of tokenize(text)) {
-    const from = token.from, to = Math.min(token.to, text.length);
-    if (to < from) continue;
-    const sameLine = doc.lineAt(from).number === doc.lineAt(Math.max(from, to - 1)).number;
-    const touches = selection.from <= to && selection.to >= from;
-
-    if (token.kind === "line") {
-      const first = doc.lineAt(from).number, last = doc.lineAt(Math.max(from, to - 1)).number;
+    const from = token.from, to = Math.min(token.to, text.length)
+    if (to < from) continue
+    if (token.kind === 'line') {
+      const first = doc.lineAt(from).number
+      const last = doc.lineAt(Math.max(from, to - 1)).number
       for (let line = first; line <= last; line++) {
-        const key = `${token.cls}:${line}`;
-        if (lineSeen.has(key)) continue;
-        lineSeen.add(key);
-        items.push({ from: doc.line(line).from, to: doc.line(line).from,
-          decoration: Decoration.line({ class: token.cls }) });
+        const key = `${token.cls}:${line}`
+        if (lineSeen.has(key)) continue
+        lineSeen.add(key)
+        items.push({from: doc.line(line).from, to: doc.line(line).from,
+          decoration: Decoration.line({class: token.cls})})
       }
-    } else if (token.kind === "delim") {
-      // Never replace markup ranges in visual mode: replacing ranges changes
-      // CodeMirror line count/geometry and moves selection anchors.
-      if (to > from)
-        items.push({
-          from,
-          to,
-          decoration: Decoration.mark({ class: visual && doc.lineAt(from).number === cursorLine
-            ? "dj-delim dj-source" : "dj-delim" }),
-        });
-    } else if (token.kind === "bullet") {
-      items.push({ from, to, decoration: Decoration.mark({ class: "dj-delim" }) });
-    } else if (token.kind === "check") {
-      items.push({ from, to, decoration: Decoration.mark({
-        class: visual ? "dj-checkbox dj-source" : "dj-checkbox",
-      }) });
-    } else if (token.kind === "hr") {
-      items.push({ from, to, decoration: Decoration.mark({ class: "dj-hr" }) });
-    } else if (token.kind === "table") {
-      // Block replacements change CodeMirror line geometry; keep source text
-      // visible until range mapping supports widget positions.
-      if (visual) items.push({ from, to, decoration: Decoration.mark({ class: "dj-table" }) });
-    } else if (token.kind === "image") {
-      if (visual) items.push({ from, to, decoration: Decoration.mark({ class: "dj-image" }) });
-    } else if (to > from)
-      items.push({ from, to, decoration: Decoration.mark({ class: token.cls }) });
+    } else if (to > from) {
+      const cls = token.kind === 'delim'
+        ? visual && doc.lineAt(from).number === cursorLine ? 'dj-delim dj-source' : 'dj-delim'
+        : token.kind === 'check'
+          ? visual && doc.lineAt(from).number === cursorLine ? 'dj-checkbox dj-source' : 'dj-checkbox'
+        : token.cls
+      items.push({from, to, decoration: Decoration.mark({class: cls})})
+    }
   }
-  return Decoration.set(items.map((item) => item.decoration.range(item.from, item.to)), true);
+  return Decoration.set(items.map((item) => item.decoration.range(item.from, item.to)), true)
 }
 
 const decoField = StateField.define({
   create: buildDecorations,
-  update(value, transaction) {
-    return transaction.docChanged || transaction.selection || transaction.effects.length
-      ? buildDecorations(transaction.state) : value;
-  },
+  update: (value, tr) => tr.docChanged || tr.selection || tr.effects.length
+    ? buildDecorations(tr.state) : value,
   provide: (field) => EditorView.decorations.from(field),
-});
+})
 
-const previewFrame = document.querySelector("#preview-frame");
-let previewReady = false,
-  pendingPreviewHTML = "";
-let syncingPreviewScroll = false;
-let sourceScrollTimer = null;
-let sourceScrollLockUntil = 0;
-const previewAssetURL = (name) => {
-  const url = new URL(`assets/${name}`, document.baseURI);
-  url.search = new URL(document.baseURI).search;
-  return url.toString();
-};
-previewFrame.srcdoc = `<!doctype html><html>
-<head><meta charset="utf-8"><link rel="stylesheet" href="${previewAssetURL("preview.css")}"></head>
-<body><main id="preview"></main><script src="${previewAssetURL("preview.js")}"></script></body>
-</html>`;
-const fileTree = document.querySelector("#file-tree"),
-  saveButton = document.querySelector("#save-file");
-let renderPending = false,
-  currentPath = null,
-  currentHash = null,
-  dirty = false,
-  diskConflict = false;
+const preview = document.querySelector('#preview')
+const previewPane = document.querySelector('#preview-pane')
+let renderPending = false
+function safeTableAlignmentHTML(html) {
+  const template = document.createElement('template')
+  template.innerHTML = html
+  for (const cell of template.content.querySelectorAll('th, td')) {
+    const match = /^text-align:\s*(left|center|right);?$/.exec((cell.getAttribute('style') || '').trim())
+    if (match) {
+      cell.classList.add(`dj-al-${match[1]}`)
+      cell.removeAttribute('style')
+    }
+  }
+  return template.innerHTML
+}
 function renderPreview(text) {
-  pendingPreviewHTML = safeTableAlignmentHTML(renderHTML(parse(text, { sourcePositions: true })));
-  if (previewReady) previewFrame.contentWindow.postMessage(
-    { channel: "luochu-preview", type: "render", html: pendingPreviewHTML },
-    "*",
-  );
+  preview.innerHTML = safeTableAlignmentHTML(renderHTML(parse(text, {sourcePositions: true})))
 }
 function schedulePreview(text) {
-  if (renderPending) return;
-  renderPending = true;
-  requestAnimationFrame(() => { renderPending = false; renderPreview(text); });
+  if (renderPending) return
+  renderPending = true
+  requestAnimationFrame(() => {
+    renderPending = false
+    renderPreview(text)
+  })
 }
 
 const view = new EditorView({
-  parent: document.querySelector("#editor"),
+  parent: document.querySelector('#editor'),
   state: EditorState.create({
     doc: demo,
     extensions: [
-      history(), keymap.of([...defaultKeymap, ...historyKeymap]), modeField, decoField,
-      EditorView.lineWrapping,
+      history(), keymap.of([...defaultKeymap, ...historyKeymap]),
+      modeField, decoField, EditorView.lineWrapping,
       EditorView.updateListener.of((update) => {
-        if (update.docChanged) {
-          if (currentPath && !diskConflict) {
-            dirty = true;
-            saveButton.textContent = "Save*";
-          }
-          schedulePreview(update.state.doc.toString());
+        if (update.docChanged) schedulePreview(update.state.doc.toString())
+        if (update.docChanged && currentPath && !diskConflict) {
+          dirty = true
+          saveButton.textContent = 'Save*'
         }
       }),
     ],
   }),
-});
-window.__LUOCHU_EDITOR_VIEW__ = view;
-renderPreview(demo);
+})
+renderPreview(demo)
 
-const toggle = document.querySelector("#mode-toggle");
+const toggle = document.querySelector('#mode-toggle')
 const applyMode = (visual) => {
-  view.dom.classList.toggle("visual", visual);
-  toggle.textContent = visual ? "Source" : "Visual";
-  view.dispatch({ effects: setMode.of(visual) });
-};
-toggle.addEventListener("click", () => applyMode(!view.state.field(modeField)));
+  view.dom.classList.toggle('visual', visual)
+  toggle.textContent = visual ? 'Visual' : 'Source'
+  view.dispatch({effects: setMode.of(visual)})
+}
+toggle.onclick = () => applyMode(!view.state.field(modeField))
+if (location.hash === '#visual') applyMode(true)
 
-view.scrollDOM.addEventListener("scroll", () => {
-  if (syncingPreviewScroll || performance.now() < sourceScrollLockUntil) return;
-  clearTimeout(sourceScrollTimer);
+let syncFromPreview = false
+let sourceScrollTimer = null
+view.scrollDOM.addEventListener('scroll', () => {
+  if (syncFromPreview) return
+  clearTimeout(sourceScrollTimer)
   sourceScrollTimer = setTimeout(() => {
-    if (syncingPreviewScroll || performance.now() < sourceScrollLockUntil) return;
-    const top = view.lineBlockAtHeight(view.scrollDOM.scrollTop).from;
-    const line = view.state.doc.lineAt(top).number;
-    const offset = view.state.doc.line(line).from;
-    const coords = view.coordsAtPos(offset);
-    const scrollRect = view.scrollDOM.getBoundingClientRect();
-    const viewportY = coords ? coords.top - scrollRect.top : 0;
-    if (previewReady) previewFrame.contentWindow.postMessage(
-      { channel: "luochu-preview", type: "scroll", offset, viewportY },
-      "*",
-    );
-  }, 120);
-});
+    if (syncFromPreview) return
+    const top = view.lineBlockAtHeight(view.scrollDOM.scrollTop).from
+    const line = view.state.doc.lineAt(top).number
+    let target = null
+    for (const element of preview.querySelectorAll('[data-startpos]')) {
+      if (Number(element.dataset.startpos.split(':')[0]) <= line) target = element
+      else break
+    }
+    if (target) previewPane.scrollTop = target.offsetTop - previewPane.offsetTop
+  }, 80)
+})
 
-window.addEventListener("message", (event) => {
-  if (event.source !== previewFrame.contentWindow ||
-      event.data?.channel !== "luochu-preview") return;
-  if (event.data.type === "ready") {
-    previewReady = true;
-    previewFrame.dataset.ready = "true";
-    if (pendingPreviewHTML) previewFrame.contentWindow.postMessage(
-      { channel: "luochu-preview", type: "render", html: pendingPreviewHTML },
-      "*",
-    );
-  } else if (event.data.type === "source-scroll" ||
-             event.data.type === "source-click") {
-    const offset = event.data.offset;
-    if (!Number.isFinite(offset)) return;
-    syncingPreviewScroll = true;
-    sourceScrollLockUntil = performance.now() + 300;
-    view.dispatch({ selection: { anchor: offset } });
+preview.addEventListener('click', (event) => {
+  const element = event.target.closest('[data-startpos]')
+  if (!element) return
+  syncFromPreview = true
+  const offset = Number(element.dataset.startpos.split(':')[2])
+  view.dispatch({selection: {anchor: offset}, scrollIntoView: true})
+  view.focus()
+  setTimeout(() => { syncFromPreview = false }, 100)
+})
+
+previewPane.addEventListener('scroll', () => {
+  if (syncFromPreview) return
+  syncFromPreview = true
+  let target = null
+  let targetTop = Infinity
+  const paneRect = previewPane.getBoundingClientRect()
+  for (const element of preview.querySelectorAll('[data-startpos]')) {
+    const rect = element.getBoundingClientRect()
+    if (rect.bottom <= paneRect.top) continue
+    const distance = Math.abs(rect.top - paneRect.top)
+    if (distance < targetTop) { target = element; targetTop = distance }
+  }
+  if (target) {
+    const offset = Number(target.dataset.startpos.split(':')[2])
+    view.dispatch({selection: {anchor: offset}})
     requestAnimationFrame(() => {
-      const coords = view.coordsAtPos(offset);
-      if (!coords) return;
-      const scrollRect = view.scrollDOM.getBoundingClientRect();
-      const desiredTop = scrollRect.top + (event.data.viewportY || 0);
-      const delta = coords.top - desiredTop;
-      view.scrollDOM.scrollTop += delta;
-      if (event.data.type === "source-click") view.focus();
-      setTimeout(() => { syncingPreviewScroll = false; }, 180);
-    });
+      const coords = view.coordsAtPos(offset)
+      if (coords) view.scrollDOM.scrollTop += coords.top - previewPane.getBoundingClientRect().top
+    })
   }
-});
+  setTimeout(() => { syncFromPreview = false }, 100)
+})
 
-const apiUrl = (path) => new URL(path, document.baseURI).toString();
+window.__LUOCHU_EDITOR_VIEW__ = view
 
-async function loadTree(directory = "") {
-  const response = await fetch(
-    apiUrl(`api/files?path=${encodeURIComponent(directory)}`),
-    { credentials: "same-origin" },
-  );
-  if (!response.ok) {
-    fileTree.textContent = "Project unavailable";
-    return;
-  }
-  const entries = await response.json();
-  fileTree.replaceChildren();
+const fileTree = document.querySelector('#file-tree')
+const saveButton = document.querySelector('#save-file')
+let currentPath = null, currentHash = null, dirty = false, diskConflict = false
+const apiUrl = (path) => new URL(path, document.baseURI).toString()
+async function loadTree(directory = '') {
+  const response = await fetch(apiUrl(`api/files?path=${encodeURIComponent(directory)}`), {credentials: 'same-origin'})
+  if (!response.ok) { fileTree.textContent = 'Project unavailable'; return }
+  const entries = await response.json()
+  fileTree.replaceChildren()
   for (const entry of entries) {
-    if (entry.name.startsWith(".")) continue;
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent =
-      entry.type === "directory" ? `${entry.name}/` : entry.name;
-    button.addEventListener("click", async () => {
-      if (entry.type === "directory") {
-        await loadTree(entry.path);
-      } else {
-        await openFile(entry.path);
-      }
-    });
-    fileTree.append(button);
+    if (entry.name.startsWith('.')) continue
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.textContent = entry.type === 'directory' ? `${entry.name}/` : entry.name
+    button.onclick = async () => entry.type === 'directory'
+      ? loadTree(entry.path) : openFile(entry.path)
+    fileTree.append(button)
   }
 }
-
 async function openFile(path) {
-  if (dirty) {
-    const discard = window.confirm(
-      "Discard unsaved changes and open another file?",
-    );
-    if (!discard) return;
-  }
-  const response = await fetch(
-    apiUrl(`api/file?path=${encodeURIComponent(path)}`),
-    { credentials: "same-origin" },
-  );
-  if (!response.ok) return;
-  const text = await response.text();
-  currentPath = path;
-  currentHash = response.headers.get("X-Luochu-Hash");
-  dirty = false;
-  diskConflict = false;
-  saveButton.disabled = false;
-  saveButton.textContent = "Save";
-  view.dispatch({
-    changes: { from: 0, to: view.state.doc.length, insert: text },
-  });
-  document.title = `Luochu - ${path}`;
+  if (dirty && !window.confirm('Discard unsaved changes and open another file?')) return
+  const response = await fetch(apiUrl(`api/file?path=${encodeURIComponent(path)}`), {credentials: 'same-origin'})
+  if (!response.ok) return
+  const text = await response.text()
+  currentPath = path
+  currentHash = response.headers.get('X-Luochu-Hash')
+  dirty = false
+  diskConflict = false
+  saveButton.disabled = false
+  view.dispatch({changes: {from: 0, to: view.state.doc.length, insert: text}})
+  schedulePreview(text)
+  document.title = `Luochu - ${path}`
 }
-
-saveButton.addEventListener("click", async () => {
-  if (!currentPath) return;
-  const response = await fetch(
-    apiUrl(`api/file?path=${encodeURIComponent(currentPath)}`),
-    {
-      method: "PUT",
-      credentials: "same-origin",
-      headers: {
-        "Content-Type": "text/plain",
-        "If-Match": currentHash,
-      },
-      body: view.state.doc.toString(),
-    },
-  );
-  if (response.status === 409) {
-    diskConflict = true;
-    saveButton.textContent = "Conflict";
-    saveButton.title =
-      "The file changed on disk; reload or resolve it explicitly";
-    return;
-  }
-  if (!response.ok) return;
-  currentHash = response.headers.get("X-Luochu-Hash");
-  dirty = false;
-  diskConflict = false;
-  saveButton.textContent = "Save";
-  saveButton.title = "";
-});
-
-loadTree();
-if (typeof EventSource !== "undefined") {
-  const watch = new EventSource(apiUrl("api/watch"));
-  watch.addEventListener("change", async (event) => {
-    if (!currentPath || event.data !== currentPath) return;
-    if (!dirty) await openFile(currentPath);
-  });
+saveButton.onclick = async () => {
+  if (!currentPath) return
+  const response = await fetch(apiUrl(`api/file?path=${encodeURIComponent(currentPath)}`), {
+    method: 'PUT', credentials: 'same-origin',
+    headers: {'Content-Type': 'text/plain', 'If-Match': currentHash},
+    body: view.state.doc.toString(),
+  })
+  if (response.status === 409) { diskConflict = true; saveButton.textContent = 'Conflict'; return }
+  if (!response.ok) return
+  currentHash = response.headers.get('X-Luochu-Hash')
+  dirty = false
+  diskConflict = false
+  saveButton.textContent = 'Save'
 }
+loadTree()

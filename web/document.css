@@ -8,6 +8,7 @@
   .cm-content { font-family: system-ui, sans-serif; }
   .dj-delim { text-decoration: none; }
 }
+.visual .dj-delim:not(.dj-source) { visibility: hidden; }
 .dj-h1, .dj-h2, .dj-h3, .dj-h4, .dj-h5, .dj-h6,
 h1, h2, h3, h4, h5, h6 {
   font-weight: 700;
