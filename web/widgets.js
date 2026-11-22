@@ -15,6 +15,15 @@ function element(tag, cls, text) {
   return node;
 }
 
+function revealSource(node, view, from) {
+  node.addEventListener("mousedown", (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    view.dispatch({ selection: { anchor: from } });
+    view.focus();
+  });
+}
+
 export const bullet = new Widget("bullet", () => element("span", "dj-bullet", "•"));
 
 export function checkbox(token) {
@@ -33,7 +42,7 @@ export function checkbox(token) {
 
 export function image(token, path) {
   const src = imageURL(token.src, path);
-  return new Widget(`image:${src}:${token.alt}`, (view) => {
+  return new Widget(`image:${token.from}:${src}:${token.alt}`, (view) => {
     const wrapper = element("span", "dj-image"), img = element("img");
     img.alt = token.alt;
     img.referrerPolicy = "no-referrer";
@@ -41,6 +50,7 @@ export function image(token, path) {
     img.addEventListener("error", () => view.requestMeasure());
     img.src = src;
     wrapper.append(img);
+    revealSource(wrapper, view, token.from);
     return wrapper;
   });
 }
@@ -49,11 +59,7 @@ export function rawHTML(token, path) {
   return new Widget(`raw:${token.from}:${token.block}:${token.html}:${path}`, (view) => {
     const wrapper = element(token.block ? "div" : "span", "dj-raw-html");
     wrapper.append(sanitizeHTML(token.html, path));
-    wrapper.addEventListener("mousedown", (event) => {
-      event.preventDefault();
-      view.dispatch({ selection: { anchor: token.from } });
-      view.focus();
-    });
+    revealSource(wrapper, view, token.from);
     for (const img of wrapper.querySelectorAll("img"))
       img.addEventListener("load", () => view.requestMeasure());
     return wrapper;
@@ -107,8 +113,9 @@ export function renderPreviewMath(root) {
 }
 
 export function math(token) {
-  return new Widget(`math:${token.display}:${token.expression}`, (view) => {
+  return new Widget(`math:${token.from}:${token.display}:${token.expression}`, (view) => {
     const node = element("span", "dj-math", token.expression);
+    revealSource(node, view, token.from);
     loadMath().then(({ renderMath }) => {
       if (!node.isConnected) return;
       renderMath(node, token.expression, token.display);

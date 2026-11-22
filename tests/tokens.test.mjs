@@ -55,3 +55,9 @@ test("raw HTML tokens include their inline format and complete block", () => {
   assert.equal(raw[1].block, true);
 });
 
+test("blockquote styling excludes the following blank line but keeps quoted blank lines", () => {
+  const text = "> first\n>\n> second\n\nNext paragraph.\n",
+    quote = tokenize(text).find((token) => token.kind === "line" && token.cls === "dj-block_quote");
+  assert.equal(text.slice(quote.from, quote.to), "> first\n>\n> second");
+});
+

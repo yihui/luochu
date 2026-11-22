@@ -1,4 +1,5 @@
 import { chromium } from "playwright";
+import * as esbuild from "esbuild";
 import { spawn, spawnSync } from "node:child_process";
 import { rmSync } from "node:fs";
 
@@ -31,6 +32,34 @@ try {
   });
 
   browser = await chromium.launch({ headless: true });
+  const noMathBundle = await esbuild.build({
+    entryPoints: ["web/main.js"], bundle: true, format: "iife", write: false,
+    loader: { ".dj": "text" }, external: ["./math.js"], minify: true,
+    define: { "process.env.NODE_ENV": '"production"' },
+    plugins: [{ name: "no-math-demo", setup(build) {
+      build.onLoad({ filter: /demo\.dj$/ }, () => ({ contents: "A document without math.", loader: "text" }));
+    } }],
+  });
+  const noMathPage = await browser.newPage(), mathRequests = [];
+  noMathPage.on("request", (request) => {
+    if (/\/assets\/math\.(js|css)$/.test(new URL(request.url()).pathname))
+      mathRequests.push(request.url());
+  });
+  await noMathPage.route("**/assets/app.js", (route) =>
+    route.fulfill({ contentType: "application/javascript", body: Buffer.from(noMathBundle.outputFiles[0].contents) }));
+  await noMathPage.goto(`http://127.0.0.1:${port}/proxy/?token=${token}`, { waitUntil: "domcontentloaded" });
+  await noMathPage.waitForFunction(() => window.__LUOCHU_EDITOR_VIEW__);
+  await noMathPage.waitForTimeout(300);
+  if (mathRequests.length) throw new Error("KaTeX loaded for a document without math");
+  await noMathPage.evaluate(() => {
+    const view = window.__LUOCHU_EDITOR_VIEW__;
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: "First edit." } });
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: "Math $`x^2`." } });
+  });
+  await noMathPage.waitForSelector("#preview .math .katex", { timeout: 5000 });
+  if (mathRequests.length !== 2) throw new Error("KaTeX assets did not load when math appeared");
+  await noMathPage.close();
+
   const page = await browser.newPage({ viewport: { width: 1100, height: 750 } }), errors = [];
   const imageBody = Buffer.from(await page.evaluate(() => {
     const canvas = document.createElement("canvas");
@@ -52,8 +81,7 @@ try {
       headers: { "X-Content-Type-Options": "nosniff" } });
   });
   page.on("console", (message) => {
-    if (message.type() === "error" && !message.text().includes("placehold.co"))
-      errors.push(message.text());
+    if (message.type() === "error") errors.push(message.text());
   });
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto(`http://127.0.0.1:${port}/proxy/?token=${token}`);
@@ -61,6 +89,37 @@ try {
 
   const previewCount = await page.locator("#preview [data-startpos]").count();
   if (previewCount < 10) throw new Error(`preview has only ${previewCount} blocks`);
+  const demoImage = await page.locator("#preview img").first().getAttribute("src");
+  if (demoImage !== "https://www.r-project.org/Rlogo.png")
+    throw new Error(`Demo preview image URL is incorrect: ${demoImage}`);
+
+  const demo = await page.evaluate(() => window.__LUOCHU_EDITOR_VIEW__.state.doc.toString()),
+    quote = "# Quote\n\n> first line\n> second line\n\nAfter quote.\n";
+  for (const visual of [false, true]) {
+    if (visual) await page.locator("#mode-toggle").click();
+    await page.evaluate((text) => {
+      const view = window.__LUOCHU_EDITOR_VIEW__;
+      view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text },
+        selection: { anchor: 0 } });
+    }, quote);
+    if (await page.locator(".cm-line.dj-block_quote").count() !== 2)
+      throw new Error(`Blockquote decorates the trailing blank line in ${visual ? "visual" : "source"} mode`);
+    await page.evaluate(() => {
+      const view = window.__LUOCHU_EDITOR_VIEW__;
+      view.dispatch({ selection: { anchor: view.state.doc.line(5).from } });
+      view.focus();
+    });
+    await page.keyboard.press("Backspace");
+    const actual = await page.evaluate(() => window.__LUOCHU_EDITOR_VIEW__.state.doc.toString());
+    if (actual !== quote.replace("> second line\n\n", "> second line\n"))
+      throw new Error(`Cannot delete the blank line after the blockquote in ${visual ? "visual" : "source"} mode`);
+  }
+  await page.locator("#mode-toggle").click();
+  await page.evaluate((text) => {
+    const view = window.__LUOCHU_EDITOR_VIEW__;
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text },
+      selection: { anchor: 0 } });
+  }, demo);
   await page.locator("#mode-toggle").click();
 
   async function clickText(text, index) {
@@ -185,6 +244,14 @@ try {
     throw new Error("Valid math did not render correctly");
   if (await page.locator('.katex a[href^="javascript:"]').count())
     throw new Error("Untrusted math created an unsafe link");
+  await page.locator(".dj-math").first().click();
+  let clicked = await page.evaluate(() => {
+    const view = window.__LUOCHU_EDITOR_VIEW__;
+    return { actual: view.state.selection.main.head, expected: view.state.doc.toString().indexOf("$`x^2 + 1`"),
+      source: view.contentDOM.textContent };
+  });
+  if (clicked.actual !== clicked.expected || !clicked.source.includes("$`x^2 + 1`"))
+    throw new Error(`Math click did not reveal its source: ${JSON.stringify(clicked)}`);
   const styles = await page.locator(".cm-content").evaluate((content) => {
     const css = (selector, property) => getComputedStyle(content.querySelector(selector))[property];
     return { insert: css(".dj-insert", "textDecorationLine"),
@@ -216,6 +283,18 @@ try {
   });
   if (!imageRequest || imageRequest.headers().referer)
     throw new Error("External image failed or sent a referrer");
+  await page.waitForFunction(() => {
+    const images = [...document.querySelectorAll("#preview img")];
+    return images.length === 2 && images.every((img) => img.complete && img.naturalWidth > 0);
+  }, null, { timeout: 5000 });
+  await page.locator('.dj-image img[alt="R logo"]').click();
+  clicked = await page.evaluate(() => {
+    const view = window.__LUOCHU_EDITOR_VIEW__;
+    return { actual: view.state.selection.main.head, expected: view.state.doc.toString().indexOf("![R logo]"),
+      source: view.contentDOM.textContent };
+  });
+  if (clicked.actual !== clicked.expected || !clicked.source.includes("![R logo](https://www.r-project.org/Rlogo.png)"))
+    throw new Error(`Image click did not reveal its source: ${JSON.stringify(clicked)}`);
   if (await page.locator(".dj-footnote-ref").textContent() !== "1")
     throw new Error("Footnote reference did not render");
   if (await page.locator(".dj-footnote-label").textContent() !== "1.")
@@ -248,6 +327,25 @@ try {
   await page.locator(".dj-table-widget td").first().click();
   if (!(await page.locator(".cm-content").textContent()).includes("| apple | pear |"))
     throw new Error("Clicking a table did not reveal its source");
+
+  await page.evaluate(() => {
+    const view = window.__LUOCHU_EDITOR_VIEW__;
+    view.dispatch({ changes: { from: 0, insert: "New preceding text.\n\n" },
+      selection: { anchor: 0 } });
+  });
+  await page.locator(".dj-math").first().click();
+  let position = await page.evaluate(() => {
+    const view = window.__LUOCHU_EDITOR_VIEW__;
+    return { actual: view.state.selection.main.head, expected: view.state.doc.toString().indexOf("$`x^2 + 1`") };
+  });
+  if (position.actual !== position.expected) throw new Error("Math click used an outdated source position");
+  await clickText("After table text.", 5);
+  await page.locator('.dj-image img[alt="R logo"]').click();
+  position = await page.evaluate(() => {
+    const view = window.__LUOCHU_EDITOR_VIEW__;
+    return { actual: view.state.selection.main.head, expected: view.state.doc.toString().indexOf("![R logo]") };
+  });
+  if (position.actual !== position.expected) throw new Error("Image click used an outdated source position");
 
   await page.locator("#mode-toggle").click();
   await clickText("After table text.", 5);

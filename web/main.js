@@ -123,12 +123,12 @@ function renderPreview(text) {
   preview.replaceChildren(sanitizeHTML(renderHTML(parse(text, {sourcePositions: true})), currentPath))
   renderPreviewMath(preview)
 }
-function schedulePreview(text) {
+function schedulePreview() {
   if (renderPending) return
   renderPending = true
   requestAnimationFrame(() => {
     renderPending = false
-    renderPreview(text)
+    renderPreview(view.state.doc.toString())
   })
 }
 
@@ -141,7 +141,7 @@ const view = new EditorView({
       modeField, decoField, EditorView.lineWrapping,
       EditorView.updateListener.of((update) => {
         view.dom.classList.toggle('visual', view.state.field(modeField))
-        if (update.docChanged) schedulePreview(update.state.doc.toString())
+        if (update.docChanged) schedulePreview()
         if (update.docChanged && currentPath && !diskConflict) {
           dirty = true
           saveButton.textContent = 'Save*'
@@ -220,7 +220,7 @@ async function openFile(path) {
   diskConflict = false
   saveButton.disabled = false
   view.dispatch({changes: {from: 0, to: view.state.doc.length, insert: text}})
-  schedulePreview(text)
+  schedulePreview()
   document.title = `Luochu - ${path}`
 }
 saveButton.onclick = async () => {

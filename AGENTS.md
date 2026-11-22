@@ -86,6 +86,13 @@ JavaScript source style:
 
 - Issue #5 is in progress on `stack/issue-5-preview` (PR #19). The demo uses
   lite-edit prototype commit `cabc7971ed4f496a146a764bf694e9b8f5c80fa4`.
+- KaTeX is requested only when the current document contains rendered math.
+  The demo contains math, so it loads on startup. Preview updates read the
+  latest document after coalescing edits. Math and image widgets reveal their
+  source when clicked, including after edits move their positions.
+- Blockquote line decorations exclude the following unquoted blank line.
+  The demo image uses Djot's `{title="..."}` attribute, not a quoted title
+  inside the destination. Both editor and preview display the R logo.
 - Shared heading CSS had applied vertical margins to CodeMirror lines, causing
   cumulative cursor-position errors. Hidden link syntax also reserved its
   full width. Browser tests now check real click coordinates, wrapped and
@@ -97,9 +104,9 @@ JavaScript source style:
 - KaTeX and its fonts are local lazy-loaded assets. `../lite.js/js/render-katex.js`
   is prior art for equation labels/references; those are not implemented yet.
   DOMPurify is required to sanitize document HTML before inserting DOM nodes.
-  The initial app bundle is 129,222 bytes gzip (up 15,070 bytes from the
-  previous commit); math adds 77,403 bytes JS and 4,168 bytes CSS gzip on
-  demand, plus used fonts. The demo loads math at startup, so the two JS
+  The initial app bundle is 129,275 bytes gzip; math adds 77,403 bytes JS and
+  4,168 bytes CSS gzip on demand, plus used fonts. The demo loads math at
+  startup, so the two JS
   transfers together slightly exceed 200 KiB. Cold/warm timings are unmeasured.
 - External HTTP(S) images are allowed by `img-src`; they contact the image host
   and may disclose the reader's IP and image URL. `Referrer-Policy: no-referrer`

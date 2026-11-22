@@ -16,7 +16,7 @@ Symbol :smile: and a span [with class]{.note #span-id}.
 
 Inline link [djot site](https://djot.net){title="Djot"}, reference link
 [the spec][spec], collapsed [spec][], autolink <https://example.com>, and an
-image ![placeholder](https://placehold.co/120x40 "A placeholder"){width=120}.
+image ![R logo](https://www.r-project.org/Rlogo.png){width=120 title="R logo"}.
 
 Footnote reference here[^note].
 

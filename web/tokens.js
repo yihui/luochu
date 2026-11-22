@@ -186,7 +186,10 @@ export function tokenize(text) {
           pos += line.length + 1;
         }
       }
-      out.push({ kind: "line", from: open.startpos, to: end, cls: cls.join(" ") });
+      let lineEnd = end;
+      if (name === "block_quote")
+        while (lineEnd > open.startpos && text[lineEnd - 1] === "\n") lineEnd--;
+      out.push({ kind: "line", from: open.startpos, to: lineEnd, cls: cls.join(" ") });
     }
   }
 }
