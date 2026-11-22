@@ -15,8 +15,9 @@ art and current implementation.
   Issue #9 currently depends on #8's execution protocol and cache; reconcile
   that dependency when starting #9 rather than claiming native-first and
   shared-protocol support before it exists.
-- #6 is in progress on `feature/issue-6-terminal`. Chromium and Go tests cover
-  shell I/O, reconnect, resize, authorization, and guarded selection paste.
+- #6 is in progress on `feature/issue-6-terminal`
+  ([draft PR #24](https://github.com/yihui/luochu/pull/24)). Chromium and Go
+  tests cover shell I/O, reconnect, resize, authorization, and guarded paste.
   The error helper remains to implement. Real interactive Claude/Copilot and
   RStudio proxy tests remain outstanding; Claude was not installed here.
 - [#5](https://github.com/yihui/luochu/issues/5): Djot document experience;
