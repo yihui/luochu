@@ -47,6 +47,20 @@ the Luochu checkout yet. Issue #1 is the first step. All prior implementation
 plan detail has moved into issue bodies; future sessions should treat GitHub
 issues and this section as the source of truth.
 
+**Recent handoff (2026-11-21):**
+
+- Initialized the `yihui/luochu` checkout, pushed baseline commit `cd61d31`.
+- Created and verified GitHub issues #1-#12.
+- Installed Go `1.27.4` (`/opt/homebrew/bin/go`) with Homebrew for server
+  implementation. This is a system tool, not a project dependency.
+- Node/npm are already present and were not newly installed.
+- Issue #1 is active on branch `spike/issue-1-feasibility`; it records
+  reproducible Djot/parser benchmarks from lite-edit prototype commit
+  `cabc7971ed4f496a146a764bf694e9b8f5c80fa4`.
+- Temporary lite-edit worktree `/tmp/lite-edit-prototype-spike` will be removed
+  after npm dependencies finish and benchmarks are complete.
+- Record any further new Homebrew formulae/casks here before relying on them.
+
 ## Prior art
 
 Before changing architecture, read these sources:
