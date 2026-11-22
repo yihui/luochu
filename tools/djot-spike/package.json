@@ -1,0 +1,11 @@
+{
+  "name": "luochu-djot-spike",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "spike": "node spike.mjs"
+  },
+  "dependencies": {
+    "@djot/djot": "0.3.2"
+  }
+}
