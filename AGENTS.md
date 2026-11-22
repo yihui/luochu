@@ -57,9 +57,21 @@ issues and this section as the source of truth.
 - Issue #1 is active on branch `spike/issue-1-feasibility`; it records
   reproducible Djot/parser benchmarks from lite-edit prototype commit
   `cabc7971ed4f496a146a764bf694e9b8f5c80fa4`.
-- Issue #2 is in progress on branch `stack/issue-2-server-skeleton`.
-- PR #13 is the Issue #1 stacked PR; PR #14 will be created from the Issue #1
-  branch for review as an Issue #2 stack.
+- Issue #2 was merged through recovery PR #17 onto `main`.
+- PR #13 is the Issue #1 stack; PR #14 is stacked on its branch for Issue #2.
+- Issue #3 is in progress on branch `stack/issue-3-djot-editor`.
+- Initial Issue #3 build is 834226 bytes uncompressed and 180696 bytes gzipped
+  for app.js, plus 2159 bytes of CSS.
+- Issue #4 implementation completed a project-root file API and browser tree:
+  live list/read/rename/conflict-write checks passed.
+- PR stack correction (2026-11-21):
+  PR #14 was incorrectly merged onto the Issue #1 branch instead of `main`.
+  PR #17 now merges the server work onto `main`. PR #15 is based on `main`,
+  and PR #16 is stacked on PR #15's branch. Do not rebuild the stack from the
+  old `spike/issue-1-feasibility` or `stack/issue-2-server-skeleton` branches.
+- Temporary `/tmp/luochu-file-smoke` and `/tmp/luochu-file-read.out` were removed.
+- No major maintainer decision was blocked; remaining browser git, PDF, and
+  collaboration choices remain explicitly deferred.
 - Temporary lite-edit worktree `/tmp/lite-edit-prototype-spike` will be removed
   after npm dependencies finish and benchmarks are complete.
 - Record any further new Homebrew formulae/casks here before relying on them.
