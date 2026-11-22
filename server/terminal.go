@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -8,11 +9,10 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"runtime"
 	"sync"
 	"time"
 
-	"github.com/creack/pty"
+	"github.com/charmbracelet/x/xpty"
 	"github.com/gorilla/websocket"
 )
 
@@ -20,26 +20,20 @@ const terminalHistory = 256 * 1024
 const terminalGrace = 2 * time.Minute
 
 type terminalSession struct {
-	mu      sync.Mutex
-	pty     *os.File
-	cmd     *exec.Cmd
-	history []byte
-	client  chan []byte
-	conn    *websocket.Conn
-	timer   *time.Timer
-	exited  bool
-}
-
-func terminalShell() (string, error) {
-	shell := os.Getenv("SHELL")
-	if shell == "" {
-		shell = "/bin/sh"
-	}
-	return exec.LookPath(shell)
+	mu        sync.Mutex
+	closeOnce sync.Once
+	pty       xpty.Pty
+	cmd       *exec.Cmd
+	history   []byte
+	client    chan []byte
+	conn      *websocket.Conn
+	timer     *time.Timer
+	exited    bool
+	stopping  bool
 }
 
 func (s *Server) newTerminal() (string, *terminalSession, error) {
-	shell, err := terminalShell()
+	shell, args, err := terminalShell()
 	if err != nil {
 		return "", nil, err
 	}
@@ -47,22 +41,39 @@ func (s *Server) newTerminal() (string, *terminalSession, error) {
 	if err != nil {
 		return "", nil, err
 	}
-	cmd := exec.Command(shell, "-i")
+	cmd := exec.Command(shell, args...)
 	cmd.Dir = s.projectRoot
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
-	file, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 24, Cols: 80})
+	file, err := xpty.NewPty(80, 24)
 	if err != nil {
+		return "", nil, err
+	}
+	if err := startTerminal(file, cmd); err != nil {
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+			_ = xpty.WaitProcess(context.Background(), cmd)
+		}
+		_ = file.Close()
 		return "", nil, err
 	}
 	session := &terminalSession{pty: file, cmd: cmd}
 	s.terminalMu.Lock()
 	s.terminals[id] = session
 	s.terminalMu.Unlock()
-	go s.readTerminal(id, session)
+	wait := make(chan error, 1)
+	go func() {
+		err := xpty.WaitProcess(context.Background(), cmd)
+		if terminalCloseOnExit() {
+			// ConPTY retains its output pipe until the console is closed.
+			session.closePTY()
+		}
+		wait <- err
+	}()
+	go s.readTerminal(id, session, wait)
 	return id, session, nil
 }
 
-func (s *Server) readTerminal(id string, session *terminalSession) {
+func (s *Server) readTerminal(id string, session *terminalSession, wait <-chan error) {
 	buffer := make([]byte, 8192)
 	for {
 		n, err := session.pty.Read(buffer)
@@ -96,10 +107,10 @@ func (s *Server) readTerminal(id string, session *terminalSession) {
 			break
 		}
 	}
-	if err := session.cmd.Wait(); err != nil {
+	if err := <-wait; err != nil {
 		log.Printf("terminal process exited: %v", err)
 	}
-	_ = session.pty.Close()
+	session.closePTY()
 	session.mu.Lock()
 	session.exited = true
 	if session.timer != nil {
@@ -118,7 +129,7 @@ func (s *Server) readTerminal(id string, session *terminalSession) {
 func (session *terminalSession) attach(conn *websocket.Conn) (chan []byte, []byte, error) {
 	session.mu.Lock()
 	defer session.mu.Unlock()
-	if session.exited {
+	if session.exited || session.stopping {
 		return nil, nil, errors.New("terminal has exited")
 	}
 	if session.client != nil {
@@ -154,18 +165,28 @@ func (session *terminalSession) detach(client chan []byte) {
 func (session *terminalSession) expireAfterGrace() {
 	session.timer = time.AfterFunc(terminalGrace, func() {
 		session.mu.Lock()
-		defer session.mu.Unlock()
 		if session.client == nil && !session.exited {
+			session.stopping = true
+			session.mu.Unlock()
 			session.stop()
+			return
 		}
+		session.mu.Unlock()
 	})
 }
 
+func (session *terminalSession) closePTY() {
+	session.closeOnce.Do(func() { _ = session.pty.Close() })
+}
+
 func (session *terminalSession) stop() {
+	session.mu.Lock()
+	session.stopping = true
+	session.mu.Unlock()
 	if err := session.cmd.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
 		log.Printf("could not stop terminal: %v", err)
 	}
-	_ = session.pty.Close()
+	session.closePTY()
 }
 
 func (s *Server) serveTerminal(w http.ResponseWriter, r *http.Request) {
@@ -173,7 +194,7 @@ func (s *Server) serveTerminal(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if s.projectRoot == "" || runtime.GOOS == "windows" {
+	if s.projectRoot == "" || !terminalSupported() {
 		http.Error(w, "terminal unavailable", http.StatusNotFound)
 		return
 	}
@@ -274,7 +295,7 @@ func (s *Server) serveTerminal(w http.ResponseWriter, r *http.Request) {
 					time.Now().Add(time.Second))
 				return
 			}
-			if err := pty.Setsize(session.pty, &pty.Winsize{Rows: message.Rows, Cols: message.Cols}); err != nil {
+			if err := session.pty.Resize(int(message.Cols), int(message.Rows)); err != nil {
 				log.Printf("terminal resize failed: %v", err)
 				return
 			}

@@ -15,10 +15,12 @@ import (
 )
 
 func TestTerminalAuthenticationAndReconnect(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("PTY is not supported on Windows")
+	if !terminalSupported() {
+		t.Skip("terminal is not supported on this system")
 	}
-	t.Setenv("SHELL", "/bin/sh")
+	if runtime.GOOS != "windows" {
+		t.Setenv("SHELL", "/bin/sh")
+	}
 	s, err := New(Config{Token: "test-token", BasePath: "/proxy", ProjectRoot: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
@@ -87,23 +89,36 @@ func TestTerminalAuthenticationAndReconnect(t *testing.T) {
 	}
 	conn := connect(base + "?token=test-token")
 	id := readSession(conn)
-	if err := conn.WriteMessage(websocket.BinaryMessage,
-		[]byte("export LUOCHU_TEST_STATE=kept; printf 'ready:%s\\n' \"$LUOCHU_TEST_STATE\"\n")); err != nil {
+	ready := "export LUOCHU_TEST_STATE=kept; printf 'ready:%s\\n' \"$LUOCHU_TEST_STATE\"\n"
+	cwd := "printf 'cwd=%s\\n' \"$PWD\"\n"
+	cwdOutput := "cwd=" + s.projectRoot
+	size := "stty size\n"
+	sizeOutput := "33 91"
+	persist := "printf 'persist:%s\\n' \"$LUOCHU_TEST_STATE\"\n"
+	if runtime.GOOS == "windows" {
+		ready = "set LUOCHU_TEST_STATE=kept\r\necho ready:%LUOCHU_TEST_STATE%\r\n"
+		cwd = "cd\r\n"
+		cwdOutput = s.projectRoot
+		size = "mode con\r\n"
+		sizeOutput = "91"
+		persist = "echo persist:%LUOCHU_TEST_STATE%\r\n"
+	}
+	if err := conn.WriteMessage(websocket.BinaryMessage, []byte(ready)); err != nil {
 		t.Fatal(err)
 	}
 
 	readUntil(conn, "ready:kept")
-	if err := conn.WriteMessage(websocket.BinaryMessage, []byte("printf 'cwd=%s\\n' \"$PWD\"\n")); err != nil {
+	if err := conn.WriteMessage(websocket.BinaryMessage, []byte(cwd)); err != nil {
 		t.Fatal(err)
 	}
-	readUntil(conn, "cwd="+s.projectRoot)
+	readUntil(conn, cwdOutput)
 	if err := conn.WriteJSON(map[string]any{"type": "resize", "cols": 91, "rows": 33}); err != nil {
 		t.Fatal(err)
 	}
-	if err := conn.WriteMessage(websocket.BinaryMessage, []byte("stty size\n")); err != nil {
+	if err := conn.WriteMessage(websocket.BinaryMessage, []byte(size)); err != nil {
 		t.Fatal(err)
 	}
-	readUntil(conn, "33 91")
+	readUntil(conn, sizeOutput)
 	_ = conn.Close()
 
 	s.terminalMu.Lock()
@@ -130,8 +145,7 @@ func TestTerminalAuthenticationAndReconnect(t *testing.T) {
 		t.Fatalf("reconnected to %s, expected %s", got, id)
 	}
 	readUntil(conn, "ready:kept")
-	if err := conn.WriteMessage(websocket.BinaryMessage,
-		[]byte("printf 'persist:%s\\n' \"$LUOCHU_TEST_STATE\"\n")); err != nil {
+	if err := conn.WriteMessage(websocket.BinaryMessage, []byte(persist)); err != nil {
 		t.Fatal(err)
 	}
 	readUntil(conn, "persist:kept")

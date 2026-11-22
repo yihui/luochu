@@ -18,7 +18,10 @@ art and current implementation.
 - #6 is in progress on `feature/issue-6-terminal`
   ([draft PR #24](https://github.com/yihui/luochu/pull/24)). Chromium and Go
   tests cover shell I/O, reconnect, resize, authorization, and guarded paste.
-  The terminal opens a shell; users launch agent CLIs themselves.
+  The terminal opens a shell using xpty (Unix PTY or Windows ConPTY); users
+  launch agent CLIs themselves. Windows runtime validation is pending.
+  Windows starts through xpty's ConPTY `Spawn` because xpty v0.1.4's `Start`
+  leaks the returned process handle; revisit this when upgrading xpty.
   The error helper remains to implement. Real interactive Claude/Copilot and
   RStudio proxy tests remain outstanding; Claude was not installed here.
 - [#5](https://github.com/yihui/luochu/issues/5): Djot document experience;

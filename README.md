@@ -68,7 +68,8 @@ confirmation because it may run commands immediately.
 
 The terminal reconnects to the same process after a connection loss, replaying
 up to 256 KiB of output. A disconnected process is stopped after two minutes.
-Terminal support is currently unavailable on Windows.
+On Unix it opens `$SHELL` (or `/bin/sh`); on Windows it opens `%COMSPEC%`
+(or `cmd.exe`) and requires ConPTY (Windows 10 version 1809 or later).
 
 ## Test
 

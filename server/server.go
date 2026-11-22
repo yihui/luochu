@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -238,9 +237,9 @@ func (s *Server) serveAsset(w http.ResponseWriter, r *http.Request, name string)
 func (s *Server) serveCapabilities(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
-	terminal := s.projectRoot != "" && runtime.GOOS != "windows"
+	terminal := s.projectRoot != "" && terminalSupported()
 	if terminal {
-		_, err := terminalShell()
+		_, _, err := terminalShell()
 		terminal = err == nil
 	}
 	_ = json.NewEncoder(w).Encode(map[string]any{
