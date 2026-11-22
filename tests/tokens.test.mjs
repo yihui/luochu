@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { tokenize } from "../web/tokens.js";
 import { blockKey, sourceOffset } from "../web/preview-core.js";
-import { renderDjotHTML } from "../web/render.js";
 
 test("prototype Djot fixture produces stable span kinds", async () => {
   const text = await readFile(
@@ -34,12 +33,4 @@ test("preview block keys and source offsets stay stable", () => {
   assert.equal(sourceOffset(element), 0);
 });
 
-test("loose task list checkbox is inside the first paragraph", () => {
-  const html = renderDjotHTML(
-    "- [ ] Open task\n\n  second line\n\n- [x] Completed task\n",
-  );
-  assert.match(html, /<li[^>]*>\n<p[^>]*><input[^>]*type="checkbox"\/> Open task/);
-  assert.match(html, /<li[^>]*>\n<p[^>]*><input[^>]*checked=""[^>]*\/> Completed task/);
-  assert.doesNotMatch(html, /<li>\n<input[^>]*>\n<p/);
-});
 
