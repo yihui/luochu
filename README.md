@@ -49,8 +49,13 @@ Start the server:
 go run ./cmd/luochu
 ```
 
-The server prints a local URL containing a random per-session token. Open that
-URL in a browser. To inspect a project directory:
+The server prints a local URL containing a random per-session token. When
+standard input is a terminal, it also attempts to open the URL in the default
+browser. Use `-open=false` to disable this, or `-open` to enable it when
+standard input is not a terminal. In a remote shell, the browser opens on the
+remote machine; disable it and use the printed URL or proxy URL instead.
+
+To inspect a project directory:
 
 ```bash
 npm run build

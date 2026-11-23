@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/charmbracelet/x/term"
 	"github.com/yihui/luochu/server"
 )
 
@@ -22,7 +23,7 @@ func main() {
 		prefix      = flag.String("base-path", "", "URL prefix, for example /p/1234")
 		origins     = flag.String("allow-origin", "", "comma-separated browser origins")
 		project     = flag.String("project", ".", "local project root")
-		openBrowser = flag.Bool("open", false, "open Luochu in the default browser")
+		openBrowser = browserFlag(flag.CommandLine, os.Stdin)
 	)
 	flag.Parse()
 
@@ -80,6 +81,10 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+func browserFlag(flags *flag.FlagSet, stdin *os.File) *bool {
+	return flags.Bool("open", term.IsTerminal(stdin.Fd()), "open Luochu in the default browser (default: true when stdin is a terminal)")
 }
 
 func openURL(url string) {
