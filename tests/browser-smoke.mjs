@@ -80,6 +80,12 @@ try {
         { name: "other", path: "other", type: "directory" },
         { name: "retry", path: "retry", type: "directory" },
         { name: "root.txt", path: "root.txt", type: "file" },
+        { name: "document.dj", path: "document.dj", type: "file" },
+        { name: "binary.dat", path: "binary.dat", type: "file" },
+        { name: "document.pdf", path: "document.pdf", type: "file" },
+        { name: "invalid.txt", path: "invalid.txt", type: "file" },
+        { name: "late.bin", path: "late.bin", type: "file" },
+        { name: "boundary.txt", path: "boundary.txt", type: "file" },
         { name: ".hidden", path: ".hidden", type: "file" },
       ],
       src: [
@@ -93,8 +99,25 @@ try {
     if (!Object.hasOwn(directories, path)) throw new Error(`Unexpected directory: ${path}`);
     await route.fulfill({ json: directories[path] });
   });
-  await treePage.route("**/api/file?*", (route) =>
-    route.fulfill({ body: "Opened deep file", headers: { "X-Luochu-Hash": "hash" } }));
+  const fileReads = [];
+  let savedBody, savedPath, savedHash, releaseSave, saveStarted, saveConflict = false;
+  await treePage.route("**/api/file?*", async (route) => {
+    const params = new URL(route.request().url()).searchParams, path = params.get("path");
+    if (route.request().method() === "PUT") {
+      savedPath = path;
+      savedBody = route.request().postData();
+      savedHash = route.request().headers()["if-match"];
+      await new Promise((resolve) => { releaseSave = resolve; saveStarted(); });
+      return route.fulfill(saveConflict ? { status: 409 } : { headers: { "X-Luochu-Hash": "new-hash" } });
+    }
+    fileReads.push({ path, text: params.get("text") === "1" });
+    if (["binary.dat", "document.pdf", "invalid.txt", "late.bin"].includes(path))
+      return route.fulfill({ status: 415, body: path === "invalid.txt" ? "not UTF-8 text\n" : "binary file\n" });
+    const body = path === "boundary.txt" ? "a".repeat(511) + "€\n"
+      : path === "root.txt" ? "\ufeff# Not Djot\r\nsecond line\r\n"
+      : path === "document.dj" ? "# Djot heading\n" : `Opened ${path}`;
+    return route.fulfill({ body, headers: { "X-Luochu-Hash": "hash" } });
+  });
   await treePage.goto(`http://127.0.0.1:${port}/proxy/?token=${token}`);
   const tree = treePage.locator("#file-tree"), srcFolder = tree.locator("details").filter({
     has: treePage.getByText("src", { exact: true }),
@@ -128,9 +151,119 @@ try {
   await tree.getByText("retry", { exact: true }).click();
   await tree.getByText("recovered.txt", { exact: true }).waitFor();
   await tree.getByText("deep.txt", { exact: true }).click();
-  await treePage.waitForFunction(() => window.__LUOCHU_EDITOR_VIEW__.state.doc.toString() === "Opened deep file");
+  await treePage.waitForFunction(() =>
+    window.__LUOCHU_EDITOR_VIEW__.state.doc.toString() === "Opened src/nested/deep.txt");
   if (await treePage.title() !== "Luochu - src/nested/deep.txt")
     throw new Error("Opening a nested file did not use its full path");
+  let dialogs = 0, acceptDiscard = false;
+  treePage.on("dialog", async (dialog) => {
+    dialogs++;
+    if (acceptDiscard) await dialog.accept();
+    else await dialog.dismiss();
+  });
+  if (await treePage.locator("#save-file").textContent() !== "Save")
+    throw new Error("Opening a file marked it dirty");
+  await tree.getByText("root.txt", { exact: true }).click();
+  await treePage.waitForFunction(() => document.title === "Luochu - root.txt");
+  if (dialogs || await treePage.locator("#save-file").textContent() !== "Save" ||
+      await treePage.locator("#preview-pane").isVisible() ||
+      await treePage.locator("#mode-toggle").isVisible() ||
+      await treePage.locator("#editor .dj-heading").count())
+    throw new Error("Switching an unchanged file prompted or marked it dirty");
+  await treePage.evaluate(() => {
+    const view = window.__LUOCHU_EDITOR_VIEW__;
+    view.dispatch({ changes: { from: view.state.doc.length, insert: " edited" } });
+  });
+  if (await treePage.locator("#save-file").textContent() !== "Save*")
+    throw new Error("Editing a file did not mark it dirty");
+  await tree.getByText("deep.txt", { exact: true }).click();
+  await treePage.waitForFunction(() => document.title === "Luochu - src/nested/deep.txt");
+  if (dialogs || await treePage.locator("#file-tabs .file-tab").count() !== 2)
+    throw new Error("Switching tabs prompted or duplicated an open file");
+  await tree.getByText("root.txt", { exact: true }).click();
+  await treePage.waitForFunction(() => document.title === "Luochu - root.txt");
+  if (!await treePage.evaluate(() => window.__LUOCHU_EDITOR_VIEW__.state.doc.toString().endsWith(" edited")) ||
+      await treePage.locator("#save-file").textContent() !== "Save*")
+    throw new Error("Switching tabs lost the edited buffer");
+  await treePage.evaluate(() => window.__LUOCHU_EDITOR_VIEW__.focus());
+  const modifier = process.platform === "darwin" ? "Meta" : "Control";
+  await treePage.keyboard.press(`${modifier}+z`);
+  if (await treePage.evaluate(() => window.__LUOCHU_EDITOR_VIEW__.state.doc.toString().endsWith(" edited")))
+    throw new Error("Undo history was lost when switching tabs");
+  await treePage.keyboard.press(`${modifier}+Shift+z`);
+  await treePage.evaluate(() => {
+    const view = window.__LUOCHU_EDITOR_VIEW__;
+    view.dispatch({ changes: { from: view.state.doc.length, insert: "\nmore" } });
+  });
+  let saveStart = new Promise((resolve) => { saveStarted = resolve; });
+  await treePage.locator("#save-file").click();
+  await saveStart;
+  await treePage.evaluate(() => {
+    const view = window.__LUOCHU_EDITOR_VIEW__;
+    view.dispatch({ changes: { from: view.state.doc.length, insert: " again" } });
+  });
+  await tree.getByText("deep.txt", { exact: true }).click();
+  const saveResponse = treePage.waitForResponse((response) =>
+    response.request().method() === "PUT" && response.url().includes("api/file"));
+  releaseSave();
+  await saveResponse;
+  await tree.getByText("root.txt", { exact: true }).click();
+  if (savedPath !== "root.txt" || savedHash !== "hash" ||
+      savedBody !== "\ufeff# Not Djot\r\nsecond line\r\n edited\r\nmore" ||
+      await treePage.locator("#save-file").textContent() !== "Save*")
+    throw new Error("Saving lost line endings or edits made while saving");
+  saveConflict = true;
+  saveStart = new Promise((resolve) => { saveStarted = resolve; });
+  await treePage.locator("#save-file").click();
+  await saveStart;
+  const conflictResponse = treePage.waitForResponse((response) =>
+    response.request().method() === "PUT" && response.status() === 409);
+  releaseSave();
+  await conflictResponse;
+  await treePage.getByText("Could not save root.txt: the file changed on disk.").waitFor();
+  if (savedHash !== "new-hash" || await treePage.locator("#save-file").textContent() !== "Conflict")
+    throw new Error("Disk conflict or updated save hash was lost");
+  await tree.getByText("binary.dat", { exact: true }).click();
+  await treePage.getByText("Cannot open binary.dat: binary file.").waitFor();
+  await tree.getByText("document.pdf", { exact: true }).click();
+  await treePage.getByText("Cannot open document.pdf: binary file.").waitFor();
+  await tree.getByText("invalid.txt", { exact: true }).click();
+  await treePage.getByText("Cannot open invalid.txt: not UTF-8 text.").waitFor();
+  await tree.getByText("late.bin", { exact: true }).click();
+  await treePage.getByText("Cannot open late.bin: binary file.").waitFor();
+  if (fileReads.some((read) => !read.text) ||
+      ["binary.dat", "document.pdf", "invalid.txt", "late.bin"].some((path) =>
+        fileReads.filter((read) => read.path === path).length !== 1))
+    throw new Error("Editor did not use a single server-validated text read");
+  if (await treePage.title() !== "Luochu - root.txt" ||
+      await treePage.locator("#file-tabs .file-tab").count() !== 2)
+    throw new Error("Opening binary data changed the active tab");
+  await tree.getByText("boundary.txt", { exact: true }).click();
+  await treePage.waitForFunction(() => document.title === "Luochu - boundary.txt");
+  if (!await treePage.evaluate(() => window.__LUOCHU_EDITOR_VIEW__.state.doc.toString().endsWith("€\n")))
+    throw new Error("UTF-8 character split across the sniff boundary was rejected or lost");
+  await treePage.getByRole("button", { name: "Close boundary.txt" }).click();
+  await treePage.getByRole("button", { name: "Close root.txt" }).click();
+  if (dialogs !== 1 || await treePage.title() !== "Luochu - root.txt")
+    throw new Error("Canceling close did not preserve the dirty tab");
+  acceptDiscard = true;
+  await treePage.getByRole("button", { name: "Close root.txt" }).click();
+  if (dialogs !== 2 || await treePage.title() !== "Luochu - src/nested/deep.txt")
+    throw new Error("Discarding a dirty tab did not select the remaining tab");
+  await tree.getByText("document.dj", { exact: true }).click();
+  await treePage.waitForFunction(() => document.title === "Luochu - document.dj");
+  await treePage.frameLocator("#preview-pane").getByRole("heading", { name: "Djot heading" }).waitFor();
+  if (!await treePage.locator("#mode-toggle").isVisible())
+    throw new Error("Djot controls were not restored for a Djot file");
+  await treePage.setViewportSize({ width: 650, height: 750 });
+  const layout = await treePage.evaluate(() => {
+    const tabs = document.querySelector("#file-tabs").getBoundingClientRect(),
+      editor = document.querySelector("#editor").getBoundingClientRect(),
+      preview = document.querySelector("#preview-pane").getBoundingClientRect();
+    return { tabs: tabs.bottom, editorTop: editor.top, editorBottom: editor.bottom, previewTop: preview.top };
+  });
+  if (layout.tabs > layout.editorTop || layout.editorBottom > layout.previewTop)
+    throw new Error(`Mobile tabs, editor, and preview overlap: ${JSON.stringify(layout)}`);
   await treePage.close();
 
   const page = await browser.newPage({ viewport: { width: 1100, height: 750 } }), errors = [];

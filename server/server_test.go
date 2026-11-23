@@ -1,6 +1,8 @@
 package server
 
 import (
+	"bytes"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -170,6 +172,53 @@ func TestProjectFileReadWriteConflictAndRename(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, "two.dj")); err != nil {
 		t.Fatalf("renamed file missing: %v", err)
+	}
+}
+
+func TestProjectTextFileRead(t *testing.T) {
+	root := t.TempDir()
+	cases := []struct {
+		name   string
+		data   []byte
+		status int
+	}{
+		{"empty.txt", nil, http.StatusOK},
+		{"text.txt", []byte(strings.Repeat("a", 511) + "€\n"), http.StatusOK},
+		{"html.txt", []byte("<html><body>hello</body></html>"), http.StatusOK},
+		{"pdf", []byte("%PDF-1.4\ntrailer\n%%EOF\n"), http.StatusUnsupportedMediaType},
+		{"binary", []byte{0, 1, 2}, http.StatusUnsupportedMediaType},
+		{"invalid", []byte{0xff}, http.StatusUnsupportedMediaType},
+		{"late", append(bytes.Repeat([]byte("a"), 512), 0), http.StatusUnsupportedMediaType},
+	}
+	for _, tc := range cases {
+		if err := os.WriteFile(filepath.Join(root, tc.name), tc.data, 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s, err := New(Config{Token: "test-token", ProjectRoot: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range cases {
+		rec := fileRequest(s, http.MethodGet, "/api/file?path="+tc.name+"&text=1", nil)
+		if rec.Code != tc.status {
+			t.Fatalf("read %s: got status %d, want %d", tc.name, rec.Code, tc.status)
+		}
+		if tc.status == http.StatusOK && (!bytes.Equal(rec.Body.Bytes(), tc.data) || rec.Header().Get("X-Luochu-Hash") == "") {
+			t.Fatalf("read %s: content or hash missing", tc.name)
+		}
+	}
+	rec := fileRequest(s, http.MethodGet, "/api/file?path=binary", nil)
+	if rec.Code != http.StatusOK || !bytes.Equal(rec.Body.Bytes(), []byte{0, 1, 2}) {
+		t.Fatal("ordinary binary file read failed")
+	}
+	rec = fileRequest(s, http.MethodGet, "/api/file?path=missing&text=1", nil)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("missing file: got %d", rec.Code)
+	}
+	binary := bytes.NewReader(append([]byte("%PDF-1.4\n"), bytes.Repeat([]byte("x"), 10000)...))
+	if _, err := readEditable(binary); !errors.Is(err, errBinaryFile) || binary.Len() != int(binary.Size())-512 {
+		t.Fatalf("binary detection did not stop after the prefix: remaining %d, error %v", binary.Len(), err)
 	}
 }
 

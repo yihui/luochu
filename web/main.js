@@ -10,7 +10,8 @@ import {imageURL} from './urls.js'
 import {sanitizeHTML} from './safe-html.js'
 import demo from './demo.dj'
 
-let currentPath = null, currentHash = null, dirty = false, diskConflict = false;
+let currentPath = null, activeTab = null, openSequence = 0;
+const tabs = [];
 const setMode = StateEffect.define()
 const modeField = StateField.define({
   create: () => false,
@@ -140,7 +141,7 @@ const decoField = StateField.define({
 const previewPane = document.querySelector('#preview-pane')
 let preview = null, renderPending = false
 function renderPreview(text) {
-  if (!preview) return
+  if (!preview || activeTab && !activeTab.djot) return
   preview.replaceChildren(sanitizeHTML(renderHTML(parse(text, {sourcePositions: true})), currentPath))
   renderPreviewMath(preview)
 }
@@ -153,24 +154,29 @@ function schedulePreview() {
   })
 }
 
-const view = new EditorView({
-  parent: document.querySelector('#editor'),
-  state: EditorState.create({
-    doc: demo,
+function editorState(doc, djot, separator = '\n') {
+  return EditorState.create({
+    doc,
     extensions: [
       history(), keymap.of([...defaultKeymap, ...historyKeymap]),
-      modeField, decoField, EditorView.lineWrapping, lineNumbers(),
+      modeField, djot ? decoField : [], separator ? EditorState.lineSeparator.of(separator) : [],
+      EditorView.lineWrapping, lineNumbers(),
       EditorView.updateListener.of((update) => {
         view.dom.classList.toggle('visual', view.state.field(modeField))
-        if (update.docChanged) schedulePreview()
-        if (update.docChanged && currentPath && !diskConflict) {
-          dirty = true
-          saveButton.textContent = 'Save*'
+        if (update.docChanged && (!activeTab || activeTab.djot)) schedulePreview()
+        if (update.docChanged && activeTab) {
+          activeTab.dirty = true
+          updateFileUI()
         }
       }),
     ],
-  }),
+  })
+}
+const view = new EditorView({
+  parent: document.querySelector('#editor'),
+  state: editorState(demo, true),
 })
+let demoState = view.state;
 const toggle = document.querySelector('#mode-toggle')
 const applyMode = (visual) => {
   view.dom.classList.toggle('visual', visual)
@@ -186,7 +192,7 @@ view.scrollDOM.addEventListener('scroll', () => {
   if (syncFromPreview) return
   clearTimeout(sourceScrollTimer)
   sourceScrollTimer = setTimeout(() => {
-    if (syncFromPreview || !preview) return
+    if (syncFromPreview || !preview || activeTab && !activeTab.djot) return
     const top = view.lineBlockAtHeight(view.scrollDOM.scrollTop).from
     const line = view.state.doc.lineAt(top).number
     let target = null
@@ -222,7 +228,61 @@ window.__LUOCHU_EDITOR_VIEW__ = view
 
 const fileTree = document.querySelector('#file-tree')
 const saveButton = document.querySelector('#save-file')
+const fileTabs = document.querySelector('#file-tabs')
+const fileStatus = document.querySelector('#file-status')
 const apiUrl = (path) => new URL(path, document.baseURI).toString()
+function updateFileUI() {
+  saveButton.disabled = !activeTab || activeTab.saving
+  saveButton.textContent = activeTab?.conflict ? 'Conflict' : activeTab?.dirty ? 'Save*' : 'Save'
+  fileTabs.replaceChildren()
+  for (const tab of tabs) {
+    const item = document.createElement('span'), select = document.createElement('button'),
+      close = document.createElement('button')
+    item.className = `file-tab${tab === activeTab ? ' active' : ''}`
+    select.type = close.type = 'button'
+    select.textContent = `${tab.path.split('/').pop()}${tab.dirty ? ' *' : ''}`
+    select.title = tab.path
+    select.setAttribute('aria-pressed', String(tab === activeTab))
+    select.onclick = () => { openSequence++; activateTab(tab) }
+    close.textContent = '×'
+    close.setAttribute('aria-label', `Close ${tab.path}`)
+    close.onclick = () => closeTab(tab)
+    item.append(select, close)
+    fileTabs.append(item)
+  }
+}
+function activateTab(tab) {
+  if (activeTab) {
+    activeTab.state = view.state
+    activeTab.scrollTop = view.scrollDOM.scrollTop
+  } else demoState = view.state
+  activeTab = tab
+  currentPath = tab?.path || null
+  view.setState(tab ? tab.state : demoState)
+  view.scrollDOM.scrollTop = tab?.scrollTop || 0
+  const djot = !tab || tab.djot, visual = djot && view.state.field(modeField)
+  view.dom.classList.toggle('visual', visual)
+  toggle.hidden = !djot
+  toggle.textContent = visual ? 'Visual' : 'Source'
+  previewPane.hidden = !djot
+  document.querySelector('main').classList.toggle('plain-file', !djot)
+  document.title = tab ? `Luochu - ${tab.path}` : 'Luochu'
+  fileStatus.textContent = ''
+  updateFileUI()
+  if (djot) schedulePreview()
+}
+function closeTab(tab) {
+  openSequence++
+  if (tab.saving) { fileStatus.textContent = `Wait for ${tab.path} to finish saving.`; return }
+  if (tab.dirty && !window.confirm(`Discard unsaved changes in ${tab.path}?`)) return
+  const index = tabs.indexOf(tab)
+  tabs.splice(index, 1)
+  if (tab === activeTab) activateTab(tabs[Math.min(index, tabs.length - 1)] || null)
+  else updateFileUI()
+}
+window.addEventListener('beforeunload', (event) => {
+  if (tabs.some((tab) => tab.dirty || tab.saving)) event.preventDefault()
+})
 async function loadTree(container, directory = '') {
   container.textContent = 'Loading...';
   let entries;
@@ -264,32 +324,67 @@ async function loadTree(container, directory = '') {
   return true;
 }
 async function openFile(path) {
-  if (dirty && !window.confirm('Discard unsaved changes and open another file?')) return
-  const response = await fetch(apiUrl(`api/file?path=${encodeURIComponent(path)}`), {credentials: 'same-origin'})
-  if (!response.ok) return
-  const text = await response.text()
+  const sequence = ++openSequence, existing = tabs.find((tab) => tab.path === path)
+  if (existing) { activateTab(existing); return }
+  fileStatus.textContent = ''
+  let response, text
+  try {
+    response = await fetch(apiUrl(`api/file?path=${encodeURIComponent(path)}&text=1`), {credentials: 'same-origin'})
+    if (response.status === 415) {
+      const reason = (await response.text()).trim()
+      if (sequence === openSequence) fileStatus.textContent = `Cannot open ${path}: ${reason}.`
+      return
+    }
+    if (!response.ok) throw new Error(`File request failed: ${response.status}`)
+    text = new TextDecoder('utf-8', {fatal: true, ignoreBOM: true}).decode(await response.arrayBuffer())
+  } catch (error) {
+    if (sequence === openSequence) fileStatus.textContent = `Could not open ${path}: ${error.message}`
+    return
+  }
+  if (sequence !== openSequence) return
+  const djot = /\.dj$/i.test(path),
+    crlf = text.includes('\r\n') && !/(^|[^\r])\n|\r(?!\n)/.test(text),
+    tab = {path, hash: response.headers.get('X-Luochu-Hash'), djot,
+      crlf, dirty: false, conflict: false, saving: false, scrollTop: 0}
+  const previousPath = currentPath
   currentPath = path
-  currentHash = response.headers.get('X-Luochu-Hash')
-  dirty = false
-  diskConflict = false
-  saveButton.disabled = false
-  view.dispatch({changes: {from: 0, to: view.state.doc.length, insert: text}})
-  schedulePreview()
-  document.title = `Luochu - ${path}`
+  tab.state = editorState(text, djot, crlf ? null : '\n')
+  currentPath = previousPath
+  tabs.push(tab)
+  activateTab(tab)
+}
+function tabText(tab, state) {
+  const text = state.sliceDoc()
+  return tab.crlf ? text.replace(/\n/g, '\r\n') : text
 }
 saveButton.onclick = async () => {
-  if (!currentPath) return
-  const response = await fetch(apiUrl(`api/file?path=${encodeURIComponent(currentPath)}`), {
-    method: 'PUT', credentials: 'same-origin',
-    headers: {'Content-Type': 'text/plain', 'If-Match': currentHash},
-    body: view.state.doc.toString(),
-  })
-  if (response.status === 409) { diskConflict = true; saveButton.textContent = 'Conflict'; return }
-  if (!response.ok) return
-  currentHash = response.headers.get('X-Luochu-Hash')
-  dirty = false
-  diskConflict = false
-  saveButton.textContent = 'Save'
+  const tab = activeTab
+  if (!tab || tab.saving) return
+  const text = tabText(tab, view.state)
+  tab.saving = true
+  updateFileUI()
+  try {
+    const response = await fetch(apiUrl(`api/file?path=${encodeURIComponent(tab.path)}`), {
+      method: 'PUT', credentials: 'same-origin',
+      headers: {'Content-Type': 'text/plain', 'If-Match': tab.hash},
+      body: text,
+    })
+    if (response.status === 409) {
+      tab.conflict = true
+      fileStatus.textContent = `Could not save ${tab.path}: the file changed on disk.`
+    } else if (!response.ok) throw new Error(`File request failed: ${response.status}`)
+    else {
+      tab.hash = response.headers.get('X-Luochu-Hash')
+      tab.dirty = tabText(tab, tab === activeTab ? view.state : tab.state) !== text
+      tab.conflict = false
+      fileStatus.textContent = ''
+    }
+  } catch (error) {
+    fileStatus.textContent = `Could not save ${tab.path}: ${error.message}`
+  } finally {
+    tab.saving = false
+    updateFileUI()
+  }
 }
 loadTree(fileTree)
 

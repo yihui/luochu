@@ -18,9 +18,11 @@
   </header>
   <main>
     <aside id="file-tree" aria-label="Project files"></aside>
-    <section id="editor" aria-label="Djot source editor"></section>
+    <nav id="file-tabs" aria-label="Open files"></nav>
+    <section id="editor" aria-label="Source editor"></section>
     <iframe id="preview-pane" title="Djot preview" sandbox="allow-same-origin"
       srcdoc="<!doctype html><html><head><link rel='stylesheet' href='assets/preview.css'></head><body><article id='preview'></article></body></html>"></iframe>
+    <div id="file-status" role="status" aria-live="polite"></div>
     <section id="terminal-pane" aria-label="Terminal" hidden>
       <div id="terminal-status" role="status"></div>
       <div id="terminal"></div>

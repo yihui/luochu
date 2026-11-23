@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -16,6 +17,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"embed"
 
@@ -322,6 +324,34 @@ func hashBytes(data []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
+var (
+	errBinaryFile  = errors.New("binary file")
+	errInvalidUTF8 = errors.New("not UTF-8 text")
+)
+
+func readEditable(r io.Reader) ([]byte, error) {
+	sample, err := io.ReadAll(io.LimitReader(r, 512))
+	if err != nil {
+		return nil, err
+	}
+	if !strings.HasPrefix(http.DetectContentType(sample), "text/") {
+		return nil, errBinaryFile
+	}
+	data, err := io.ReadAll(io.MultiReader(bytes.NewReader(sample), r))
+	if err != nil {
+		return nil, err
+	}
+	if !utf8.Valid(data) {
+		return nil, errInvalidUTF8
+	}
+	for _, b := range data {
+		if b < 32 && b != '\t' && b != '\n' && b != '\r' && b != '\f' || b == 127 {
+			return nil, errBinaryFile
+		}
+	}
+	return data, nil
+}
+
 func (s *Server) serveFiles(w http.ResponseWriter, r *http.Request) {
 	if s.projectRoot == "" {
 		http.Error(w, "project root is not configured", http.StatusNotFound)
@@ -383,15 +413,40 @@ func (s *Server) serveFile(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
-		data, err := os.ReadFile(full)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusNotFound)
-			return
-		}
-		info, err := os.Stat(full)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+		var data []byte
+		var info os.FileInfo
+		if r.URL.Query().Get("text") == "1" {
+			file, err := os.Open(full)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusNotFound)
+				return
+			}
+			defer file.Close()
+			info, err = file.Stat()
+			if err != nil || info.IsDir() {
+				http.Error(w, "file unavailable", http.StatusNotFound)
+				return
+			}
+			data, err = readEditable(file)
+			if err != nil {
+				status := http.StatusInternalServerError
+				if errors.Is(err, errBinaryFile) || errors.Is(err, errInvalidUTF8) {
+					status = http.StatusUnsupportedMediaType
+				}
+				http.Error(w, err.Error(), status)
+				return
+			}
+		} else {
+			data, err = os.ReadFile(full)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusNotFound)
+				return
+			}
+			info, err = os.Stat(full)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
 		}
 		relative, _ := filepath.Rel(s.projectRoot, full)
 		w.Header().Set("Content-Type", "application/octet-stream")
