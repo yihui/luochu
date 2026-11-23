@@ -9,22 +9,14 @@ art and current implementation.
 
 ## Active work
 
-- Prioritize [#6](https://github.com/yihui/luochu/issues/6) (terminal and
-  agent CLIs), [#7](https://github.com/yihui/luochu/issues/7) (git and diff
+- Prioritize [#7](https://github.com/yihui/luochu/issues/7) (git and diff
   review), then [#9](https://github.com/yihui/luochu/issues/9) (browser Wasm).
   Issue #9 currently depends on #8's execution protocol and cache; reconcile
   that dependency when starting #9 rather than claiming native-first and
   shared-protocol support before it exists.
-- #6 terminal foundation was merged in
-  [PR #24](https://github.com/yihui/luochu/pull/24). Chromium and Go
-  tests cover shell I/O, reconnect, resize, authorization, and guarded paste.
-  The terminal opens a shell using xpty (Unix PTY or Windows ConPTY); users
-  launch agent CLIs themselves. Windows Go terminal tests run on GitHub Actions;
-  interactive browser and agent CLI testing on Windows remains outstanding.
-  Windows starts through xpty's ConPTY `Spawn` because xpty v0.1.4's `Start`
-  leaks the returned process handle; revisit this when upgrading xpty.
-  The error helper remains to implement. Real interactive Claude/Copilot and
-  RStudio proxy tests remain outstanding; Claude was not installed here.
+- Terminal follow-ups: implement the error helper and test interactive
+  Claude/Copilot sessions, including on Windows. Real RStudio proxy validation
+  is tracked in #11.
 - [#5](https://github.com/yihui/luochu/issues/5): Djot document experience;
   keep it open until its acceptance criteria are met.
   - [#20](https://github.com/yihui/luochu/issues/20): bidirectional scroll sync.
@@ -86,7 +78,7 @@ art and current implementation.
 - Ship one Go server binary with embedded UI. Generated assets, source maps,
   caches, and release archives are not committed. Keep the initial JS under
   roughly 200 KB compressed and lazy-load expensive functionality.
-- Current initial app JS: 132,838 bytes gzip; lazy terminal: 72,531 bytes JS
+- Current initial app JS: 132,990 bytes gzip; lazy terminal: 72,531 bytes JS
   and 1,733 bytes CSS gzip. Lazy KaTeX: 77,403 bytes JS and 4,168 bytes CSS
   gzip, plus fonts; the demo loads math at startup. Cold/warm timings remain
   unmeasured; see #22.
@@ -94,6 +86,8 @@ art and current implementation.
   permission prompts; an unrestricted shell cannot enforce per-action approval.
   Never enable agent permission-bypass flags. Keep API keys out of browser
   storage and source control.
+- Windows uses xpty's ConPTY `Spawn` because xpty v0.1.4's `Start` leaks
+  the returned process handle; revisit this when upgrading xpty.
 
 ## Commands
 

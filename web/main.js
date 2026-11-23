@@ -223,20 +223,45 @@ window.__LUOCHU_EDITOR_VIEW__ = view
 const fileTree = document.querySelector('#file-tree')
 const saveButton = document.querySelector('#save-file')
 const apiUrl = (path) => new URL(path, document.baseURI).toString()
-async function loadTree(directory = '') {
-  const response = await fetch(apiUrl(`api/files?path=${encodeURIComponent(directory)}`), {credentials: 'same-origin'})
-  if (!response.ok) { fileTree.textContent = 'Project unavailable'; return }
-  const entries = await response.json()
-  fileTree.replaceChildren()
-  for (const entry of entries) {
-    if (entry.name.startsWith('.')) continue
-    const button = document.createElement('button')
-    button.type = 'button'
-    button.textContent = entry.type === 'directory' ? `${entry.name}/` : entry.name
-    button.onclick = async () => entry.type === 'directory'
-      ? loadTree(entry.path) : openFile(entry.path)
-    fileTree.append(button)
+async function loadTree(container, directory = '') {
+  container.textContent = 'Loading...';
+  let entries;
+  try {
+    const response = await fetch(apiUrl(`api/files?path=${encodeURIComponent(directory)}`), {credentials: 'same-origin'});
+    if (!response.ok) throw new Error(`Directory request failed: ${response.status}`);
+    entries = await response.json();
+  } catch (error) {
+    container.textContent = directory ? 'Directory unavailable; close and reopen to retry' : 'Project unavailable';
+    console.error(error);
+    return false;
   }
+  container.replaceChildren();
+  for (const entry of entries) {
+    if (entry.name.startsWith('.')) continue;
+    if (entry.type === 'directory') {
+      const folder = document.createElement('details'), label = document.createElement('summary'),
+        children = document.createElement('div');
+      label.textContent = entry.name;
+      children.className = 'file-tree-children';
+      folder.append(label, children);
+      let loaded = false, loading = false;
+      folder.addEventListener('toggle', async () => {
+        if (!folder.open || loaded || loading) return;
+        loading = true;
+        loaded = await loadTree(children, entry.path);
+        loading = false;
+      });
+      container.append(folder);
+    } else {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = entry.name;
+      button.onclick = () => openFile(entry.path);
+      container.append(button);
+    }
+  }
+  if (!container.childNodes.length) container.textContent = '(empty)';
+  return true;
 }
 async function openFile(path) {
   if (dirty && !window.confirm('Discard unsaved changes and open another file?')) return
@@ -266,7 +291,7 @@ saveButton.onclick = async () => {
   diskConflict = false
   saveButton.textContent = 'Save'
 }
-loadTree()
+loadTree(fileTree)
 
 const terminalControls = document.querySelector('#terminal-controls'),
   terminalToggle = document.querySelector('#terminal-toggle'),

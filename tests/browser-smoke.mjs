@@ -65,6 +65,74 @@ try {
   if (mathRequests.length !== 2) throw new Error("KaTeX assets did not load when math appeared");
   await noMathPage.close();
 
+  const treePage = await browser.newPage(), directoryRequests = [];
+  let retryRequests = 0;
+  await treePage.route("**/api/files?*", async (route) => {
+    const path = new URL(route.request().url()).searchParams.get("path");
+    directoryRequests.push(path);
+    if (path === "retry" && ++retryRequests === 1) {
+      await route.fulfill({ status: 503, body: "unavailable" });
+      return;
+    }
+    const directories = {
+      "": [
+        { name: "src", path: "src", type: "directory" },
+        { name: "other", path: "other", type: "directory" },
+        { name: "retry", path: "retry", type: "directory" },
+        { name: "root.txt", path: "root.txt", type: "file" },
+        { name: ".hidden", path: ".hidden", type: "file" },
+      ],
+      src: [
+        { name: "nested", path: "src/nested", type: "directory" },
+        { name: "one.txt", path: "src/one.txt", type: "file" },
+      ],
+      "src/nested": [{ name: "deep.txt", path: "src/nested/deep.txt", type: "file" }],
+      other: [],
+      retry: [{ name: "recovered.txt", path: "retry/recovered.txt", type: "file" }],
+    };
+    if (!Object.hasOwn(directories, path)) throw new Error(`Unexpected directory: ${path}`);
+    await route.fulfill({ json: directories[path] });
+  });
+  await treePage.route("**/api/file?*", (route) =>
+    route.fulfill({ body: "Opened deep file", headers: { "X-Luochu-Hash": "hash" } }));
+  await treePage.goto(`http://127.0.0.1:${port}/proxy/?token=${token}`);
+  const tree = treePage.locator("#file-tree"), srcFolder = tree.locator("details").filter({
+    has: treePage.getByText("src", { exact: true }),
+  });
+  await tree.getByText("src", { exact: true }).click();
+  await tree.getByText("nested", { exact: true }).click();
+  await tree.getByText("deep.txt", { exact: true }).waitFor();
+  const treeStyles = await tree.evaluate((element) => {
+    const nodes = [element.querySelector("summary"), ...element.querySelectorAll(".file-tree-children summary"),
+      ...element.querySelectorAll("button")];
+    return nodes.map((node) => getComputedStyle(node).font);
+  });
+  if (treeStyles.some((font) => font !== treeStyles[0]))
+    throw new Error(`Tree nodes lack consistent fonts: ${JSON.stringify(treeStyles)}`);
+  if (!await tree.getByText("root.txt", { exact: true }).isVisible() ||
+      await tree.getByText(".hidden", { exact: true }).count())
+    throw new Error("Expanding a directory changed the root listing");
+  await tree.getByText("other", { exact: true }).click();
+  await tree.getByText("(empty)", { exact: true }).waitFor();
+  await tree.getByText("src", { exact: true }).click();
+  if (await tree.getByText("deep.txt", { exact: true }).isVisible())
+    throw new Error("Collapsed folder still shows its descendants");
+  await tree.getByText("src", { exact: true }).click();
+  if (!await tree.getByText("deep.txt", { exact: true }).isVisible() ||
+      !await srcFolder.locator("details").first().evaluate((element) => element.open) ||
+      directoryRequests.filter((path) => path === "src" || path === "src/nested").length !== 2)
+    throw new Error("Reopening a folder did not preserve its loaded subtree");
+  await tree.getByText("retry", { exact: true }).click();
+  await tree.getByText("Directory unavailable; close and reopen to retry").waitFor();
+  await tree.getByText("retry", { exact: true }).click();
+  await tree.getByText("retry", { exact: true }).click();
+  await tree.getByText("recovered.txt", { exact: true }).waitFor();
+  await tree.getByText("deep.txt", { exact: true }).click();
+  await treePage.waitForFunction(() => window.__LUOCHU_EDITOR_VIEW__.state.doc.toString() === "Opened deep file");
+  if (await treePage.title() !== "Luochu - src/nested/deep.txt")
+    throw new Error("Opening a nested file did not use its full path");
+  await treePage.close();
+
   const page = await browser.newPage({ viewport: { width: 1100, height: 750 } }), errors = [];
   let terminalSocket, terminalConnections = 0;
   await page.routeWebSocket(/\/api\/terminal(?:\?|$)/, (socket) => {
