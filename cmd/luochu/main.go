@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"runtime"
@@ -34,7 +35,7 @@ func main() {
 		basePath = ""
 	}
 
-	originList := []string{}
+	originList := workbenchOrigins(os.Getenv("RS_SERVER_ADDRESS"))
 	if strings.TrimSpace(*origins) != "" {
 		for _, origin := range strings.Split(*origins, ",") {
 			if origin = strings.TrimSpace(origin); origin != "" {
@@ -67,6 +68,9 @@ func main() {
 	portURL := addr.Port
 	url := fmt.Sprintf("http://%s:%d%s/?token=%s", *host, portURL, basePath, token)
 	log.Printf("Luochu listening on %s", url)
+	if public := workbenchURL(portURL, os.Getenv); public != "" {
+		log.Printf("Open in Posit Workbench: %s?token=%s", public, token)
+	}
 	log.Printf("The token is printed once and is required for every HTTP and WebSocket request")
 	if *openBrowser {
 		go openURL(url)
@@ -91,4 +95,15 @@ func openURL(url string) {
 		return
 	}
 	_ = command.Start()
+}
+
+// workbenchOrigins returns the browser origin behind a Posit Workbench proxy.
+// The Workbench server sets RS_SERVER_ADDRESS, so this is trusted config rather
+// than request headers. Only scheme and host are kept; the path varies per session.
+func workbenchOrigins(address string) []string {
+	parsed, err := url.Parse(strings.TrimSpace(address))
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+		return nil
+	}
+	return []string{parsed.Scheme + "://" + parsed.Host}
 }

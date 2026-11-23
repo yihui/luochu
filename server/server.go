@@ -105,21 +105,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	path := r.URL.Path
-	prefix := s.config.BasePath
-	if prefix != "" {
-		if path == prefix {
-			http.Redirect(w, r, prefix+"/", http.StatusPermanentRedirect)
+	prefix, path, ok := s.splitRoute(r.URL.Path)
+	if !ok {
+		// A bare prefix needs its trailing slash so relative asset URLs resolve.
+		if r.URL.Path == s.config.BasePath || (s.config.BasePath == "" && !strings.HasSuffix(r.URL.Path, "/")) {
+			redirectTrailingSlash(w, r)
 			return
 		}
-		if !strings.HasPrefix(path, prefix+"/") {
-			http.NotFound(w, r)
-			return
-		}
-		path = strings.TrimPrefix(path, prefix)
-	}
-	if path == "" {
-		path = "/"
+		http.NotFound(w, r)
+		return
 	}
 
 	switch {
@@ -152,6 +146,45 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// appRoutes are the fixed API routes; anything else under the proxy prefix is
+// the index or an asset.
+var appRoutes = []string{"/api/capabilities", "/api/files", "/api/file", "/api/watch", "/api/terminal"}
+
+// splitRoute separates the proxy prefix from the app route. A configured
+// BasePath must match exactly. Without one, the route is recognized by suffix,
+// so Workbench-style prefixes (which change per session) work unchanged.
+// Prefix only selects routing; token, Host and Origin checks still apply.
+func (s *Server) splitRoute(path string) (prefix, route string, ok bool) {
+	if base := s.config.BasePath; base != "" {
+		if !strings.HasPrefix(path, base+"/") {
+			return "", "", false
+		}
+		return base, strings.TrimPrefix(path, base), true
+	}
+	for _, name := range appRoutes {
+		if strings.HasSuffix(path, name) {
+			return strings.TrimSuffix(path, name), name, true
+		}
+	}
+	if i := strings.LastIndex(path, "/assets/"); i >= 0 {
+		if name := path[i+len("/assets/"):]; name != "" && !strings.Contains(name, "/") {
+			return path[:i], path[i:], true
+		}
+	}
+	if strings.HasSuffix(path, "/") {
+		return strings.TrimSuffix(path, "/"), "/", true
+	}
+	return "", "", false
+}
+
+func redirectTrailingSlash(w http.ResponseWriter, r *http.Request) {
+	target := r.URL.Path + "/"
+	if r.URL.RawQuery != "" {
+		target += "?" + r.URL.RawQuery
+	}
+	http.Redirect(w, r, target, http.StatusPermanentRedirect)
+}
+
 func prefixOrSlash(prefix string) string {
 	if prefix == "" {
 		return "/"
@@ -182,13 +215,13 @@ func (s *Server) validHost(r *http.Request) bool {
 
 func (s *Server) validOrigin(r *http.Request) bool {
 	origin := r.Header.Get("Origin")
-	if len(s.config.Origins) == 0 {
-		scheme := "http"
-		if r.TLS != nil {
-			scheme = "https"
-		}
-		host := r.Host
-		return origin == scheme+"://"+host
+	// The same-host origin always works; Host was already checked against loopback.
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	if origin == scheme+"://"+r.Host {
+		return true
 	}
 	for _, allowed := range s.config.Origins {
 		if origin == strings.TrimRight(allowed, "/") {

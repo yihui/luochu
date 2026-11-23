@@ -22,8 +22,11 @@ On Windows, run in PowerShell:
 Omit the version to install the latest stable release. The installers verify
 the release checksum and need no Go or Node installation. On a remote
 RStudio Server machine, run the Linux binary without `-open` and access it
-through the server's port proxy. Proxy compatibility has not yet been
-verified and may require additional configuration or fixes.
+through the server's port proxy. Posit Workbench needs no flags: the server
+detects the proxy path from each request and allows the browser origin from the
+`RS_SERVER_ADDRESS` environment variable. The startup log prints the proxied
+URL, computed with the same port transform as `rstudioapi::translateLocalUrl`.
+Proxy compatibility has not yet been fully verified.
 
 ## Development requirements
 
@@ -60,11 +63,15 @@ npm run build
 go run ./cmd/luochu -project /path/to/project
 ```
 
-For a proxy-mounted URL or a fixed port:
+For a fixed port, or a proxy that must match an exact prefix:
 
 ```bash
 go run ./cmd/luochu -base-path /proxy -port 48765
 ```
+
+Without `-base-path`, any proxy prefix ending in the app routes is accepted.
+Token, Host and Origin checks still apply. Use `-allow-origin` for a browser
+origin outside Workbench.
 
 The token is required for requests. It is printed once when the server starts.
 
