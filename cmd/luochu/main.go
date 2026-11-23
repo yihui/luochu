@@ -68,6 +68,9 @@ func main() {
 	portURL := addr.Port
 	url := fmt.Sprintf("http://%s:%d%s/?token=%s", *host, portURL, basePath, token)
 	log.Printf("Luochu listening on %s", url)
+	if public := workbenchURL(portURL, os.Getenv); public != "" {
+		log.Printf("Open in Posit Workbench: %s?token=%s", public, token)
+	}
 	log.Printf("The token is printed once and is required for every HTTP and WebSocket request")
 	if *openBrowser {
 		go openURL(url)

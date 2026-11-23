@@ -24,8 +24,9 @@ the release checksum and need no Go or Node installation. On a remote
 RStudio Server machine, run the Linux binary without `-open` and access it
 through the server's port proxy. Posit Workbench needs no flags: the server
 detects the proxy path from each request and allows the browser origin from the
-`RS_SERVER_ADDRESS` environment variable. Proxy compatibility has not yet been
-fully verified.
+`RS_SERVER_ADDRESS` environment variable. The startup log prints the proxied
+URL, computed with the same port transform as `rstudioapi::translateLocalUrl`.
+Proxy compatibility has not yet been fully verified.
 
 ## Development requirements
 
