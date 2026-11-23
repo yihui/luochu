@@ -184,3 +184,53 @@ func TestProjectTraversalRejected(t *testing.T) {
 		t.Fatalf("got %d, want 400", rec.Code)
 	}
 }
+
+func TestProxyPrefixWithoutBasePath(t *testing.T) {
+	s, err := New(Config{Token: "test-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const base = "/s/f6bd/p/b02a"
+	rec := request(s, http.MethodGet, base+"/?token=test-token", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("index: got %d, want 200", rec.Code)
+	}
+	if cookie := rec.Result().Cookies(); len(cookie) != 1 || cookie[0].Path != base+"/" {
+		t.Fatalf("cookie: got %+v, want Path %s/", cookie, base)
+	}
+	rec = request(s, http.MethodGet, base+"/api/capabilities?token=test-token", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("api: got %d, want 200", rec.Code)
+	}
+	rec = request(s, http.MethodGet, base+"/api/capabilities", "")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("no token: got %d, want 401", rec.Code)
+	}
+	rec = request(s, http.MethodGet, base+"?token=test-token", "")
+	if rec.Code != http.StatusPermanentRedirect || rec.Header().Get("Location") != base+"/?token=test-token" {
+		t.Fatalf("bare prefix: got %d %q, want 308 to trailing slash", rec.Code, rec.Header().Get("Location"))
+	}
+	rec = request(s, http.MethodGet, base+"/api/capabilities?token=test-token", "https://attacker.example")
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("origin: got %d, want 403", rec.Code)
+	}
+}
+
+func TestConfiguredOriginKeepsSameHostOrigin(t *testing.T) {
+	s, err := New(Config{Token: "test-token", Origins: []string{"https://rstudio.example"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := request(s, http.MethodGet, "/api/capabilities?token=test-token", "http://127.0.0.1")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("same host: got %d, want 200", rec.Code)
+	}
+	rec = request(s, http.MethodGet, "/api/capabilities?token=test-token", "https://rstudio.example")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("configured: got %d, want 200", rec.Code)
+	}
+	rec = request(s, http.MethodGet, "/api/capabilities?token=test-token", "https://attacker.example")
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("other: got %d, want 403", rec.Code)
+	}
+}
