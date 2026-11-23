@@ -139,6 +139,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.serveFile(w, r)
 	case path == "/api/watch":
 		s.serveWatch(w, r)
+	case path == "/api/git":
+		s.serveGit(w, r)
 	case path == "/api/terminal":
 		s.serveTerminal(w, r)
 	case strings.HasPrefix(path, "/assets/"):
@@ -150,7 +152,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // appRoutes are the fixed API routes; anything else under the proxy prefix is
 // the index or an asset.
-var appRoutes = []string{"/api/capabilities", "/api/files", "/api/file", "/api/watch", "/api/terminal"}
+var appRoutes = []string{"/api/capabilities", "/api/files", "/api/file", "/api/watch", "/api/git", "/api/terminal"}
 
 // splitRoute separates the proxy prefix from the app route. A configured
 // BasePath must match exactly. Without one, the route is recognized by suffix,
@@ -283,7 +285,7 @@ func (s *Server) serveCapabilities(w http.ResponseWriter) {
 		"capabilities": map[string]bool{
 			"files":     s.projectRoot != "",
 			"watch":     s.watcher != nil,
-			"git":       false,
+			"git":       s.projectRoot != "" && gitAvailable(),
 			"terminal":  terminal,
 			"nativeRun": false,
 			"wasmRun":   false,
@@ -304,7 +306,6 @@ func (s *Server) projectPath(requestPath string) (string, error) {
 	if s.projectRoot == "" {
 		return "", errors.New("project root is not configured")
 	}
-	requestPath = strings.TrimSpace(requestPath)
 	if requestPath == "" {
 		requestPath = "."
 	}

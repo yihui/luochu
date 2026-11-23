@@ -17,11 +17,23 @@
     </span>
   </header>
   <main>
-    <aside id="file-tree" aria-label="Project files"></aside>
+    <aside id="sidebar">
+      <nav aria-label="Sidebar">
+        <button id="files-toggle" type="button" aria-pressed="true">Files</button>
+        <button id="git-toggle" type="button" aria-pressed="false" hidden>Git</button>
+      </nav>
+      <button id="project-root" type="button" hidden>Project root</button>
+      <div id="file-tree" aria-label="Project files"></div>
+      <section id="git-pane" aria-label="Git" hidden></section>
+    </aside>
     <nav id="file-tabs" aria-label="Open files"></nav>
     <section id="editor" aria-label="Source editor"></section>
     <iframe id="preview-pane" title="Djot preview" sandbox="allow-same-origin"
       srcdoc="<!doctype html><html><head><link rel='stylesheet' href='assets/preview.css'></head><body><article id='preview'></article></body></html>"></iframe>
+    <section id="git-diff" aria-label="Git diff" hidden>
+      <div class="git-diff-header"><strong id="git-diff-title"></strong><button id="git-diff-close" type="button">Close diff</button></div>
+      <div id="git-diff-content"></div>
+    </section>
     <div id="file-status" role="status" aria-live="polite"></div>
     <section id="terminal-pane" aria-label="Terminal" hidden>
       <div id="terminal-status" role="status"></div>

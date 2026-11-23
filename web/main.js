@@ -231,6 +231,11 @@ const saveButton = document.querySelector('#save-file')
 const fileTabs = document.querySelector('#file-tabs')
 const fileStatus = document.querySelector('#file-status')
 const apiUrl = (path) => new URL(path, document.baseURI).toString()
+let gitDirectory = '', gitUI = null, gitAssets = null;
+function selectGitDirectory(directory) {
+  gitDirectory = directory;
+  gitUI?.setDirectory(directory);
+}
 function updateFileUI() {
   saveButton.disabled = !activeTab || activeTab.saving
   saveButton.textContent = activeTab?.conflict ? 'Conflict' : activeTab?.dirty ? 'Save*' : 'Save'
@@ -258,6 +263,8 @@ function activateTab(tab) {
   } else demoState = view.state
   activeTab = tab
   currentPath = tab?.path || null
+  selectGitDirectory(tab ? tab.path.split('/').slice(0, -1).join('/') : '')
+  gitUI?.closeDiff()
   view.setState(tab ? tab.state : demoState)
   view.scrollDOM.scrollTop = tab?.scrollTop || 0
   const djot = !tab || tab.djot, visual = djot && view.state.field(modeField)
@@ -304,6 +311,7 @@ async function loadTree(container, directory = '') {
       label.textContent = entry.name;
       children.className = 'file-tree-children';
       folder.append(label, children);
+      label.addEventListener('click', () => selectGitDirectory(entry.path));
       let loaded = false, loading = false;
       folder.addEventListener('toggle', async () => {
         if (!folder.open || loaded || loading) return;
@@ -323,9 +331,15 @@ async function loadTree(container, directory = '') {
   if (!container.childNodes.length) container.textContent = '(empty)';
   return true;
 }
-async function openFile(path) {
+function jumpToLine(line) {
+  if (!line) return
+  const number = Math.min(line, view.state.doc.lines)
+  view.dispatch({selection: {anchor: view.state.doc.line(number).from}, scrollIntoView: true})
+  view.focus()
+}
+async function openFile(path, line = null) {
   const sequence = ++openSequence, existing = tabs.find((tab) => tab.path === path)
-  if (existing) { activateTab(existing); return }
+  if (existing) { activateTab(existing); jumpToLine(line); return }
   fileStatus.textContent = ''
   let response, text
   try {
@@ -352,6 +366,7 @@ async function openFile(path) {
   currentPath = previousPath
   tabs.push(tab)
   activateTab(tab)
+  jumpToLine(line)
 }
 function tabText(tab, state) {
   const text = state.sliceDoc()
@@ -378,6 +393,7 @@ saveButton.onclick = async () => {
       tab.dirty = tabText(tab, tab === activeTab ? view.state : tab.state) !== text
       tab.conflict = false
       fileStatus.textContent = ''
+      gitUI?.refresh()
     }
   } catch (error) {
     fileStatus.textContent = `Could not save ${tab.path}: ${error.message}`
@@ -398,9 +414,40 @@ fetch(apiUrl('api/capabilities'), {credentials: 'same-origin'}).then((response) 
   if (!response.ok) throw new Error(`Capability request failed: ${response.status}`);
   return response.json();
 }).then(({capabilities}) => {
-  if (!capabilities.terminal) return;
-  terminalControls.hidden = false;
+  if (capabilities.terminal) terminalControls.hidden = false;
+  if (capabilities.git) {
+    document.querySelector('#git-toggle').hidden = false;
+    document.querySelector('#project-root').hidden = false;
+  }
 }).catch((error) => console.error('Could not load capabilities:', error));
+
+const gitToggle = document.querySelector('#git-toggle'), filesToggle = document.querySelector('#files-toggle'),
+  gitPane = document.querySelector('#git-pane'), projectRoot = document.querySelector('#project-root');
+projectRoot.onclick = () => selectGitDirectory('');
+filesToggle.onclick = () => {
+  fileTree.hidden = false;
+  projectRoot.hidden = gitToggle.hidden;
+  gitPane.hidden = true;
+  filesToggle.setAttribute('aria-pressed', 'true');
+  gitToggle.setAttribute('aria-pressed', 'false');
+};
+gitToggle.onclick = async () => {
+  fileTree.hidden = true;
+  projectRoot.hidden = true;
+  gitPane.hidden = false;
+  filesToggle.setAttribute('aria-pressed', 'false');
+  gitToggle.setAttribute('aria-pressed', 'true');
+  if (gitUI) { gitUI.refresh(); return; }
+  gitPane.textContent = 'Loading Git…';
+  try {
+    if (!gitAssets) gitAssets = import('./git.js').catch((error) => { gitAssets = null; throw error; });
+    const module = await gitAssets;
+    if (!gitUI) gitUI = module.createGitPane(gitPane, apiUrl, gitDirectory, openFile);
+    if (!gitPane.hidden) gitUI.refresh();
+  } catch (error) {
+    gitPane.textContent = `Could not load Git: ${error.message}`;
+  }
+};
 
 terminalToggle.onclick = async () => {
   if (!terminalPane.hidden) {

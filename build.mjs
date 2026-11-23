@@ -11,7 +11,7 @@ await esbuild.build({
   minify: true,
   sourcemap: false,
   define: { "process.env.NODE_ENV": '"production"' },
-  external: ["./math.js", "./terminal.js"],
+  external: ["./math.js", "./terminal.js", "./git.js"],
 });
 for (const name of ["app", "preview", "terminal"]) {
   await esbuild.build({
@@ -26,6 +26,13 @@ await esbuild.build({
   bundle: true,
   format: "esm",
   outfile: "server/static/assets/terminal.js",
+  minify: true,
+});
+await esbuild.build({
+  entryPoints: ["web/git.js"],
+  bundle: true,
+  format: "esm",
+  outfile: "server/static/assets/git.js",
   minify: true,
 });
 await esbuild.build({

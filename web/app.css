@@ -9,11 +9,29 @@ body {
     display: flex; align-items: center; gap: 0.625em;
     padding: 0.25em 0.625em; border-bottom: 1px solid #cfcfcf;
   }
-  main { display: grid; grid-template-columns: 13.75em 1fr 1fr;
-    grid-template-rows: auto minmax(0, 1fr) auto; min-height: 0; }
+  main {
+    display: grid; grid-template-columns: 13.75em 1fr 1fr;
+    grid-template-rows: auto minmax(0, 1fr) auto; min-height: 0;
+    &.plain-file #editor { grid-column: 2 / -1; }
+    &.show-git-diff {
+      #editor, #preview-pane { display: none; }
+    }
+    &.terminal-open {
+      grid-template-rows: auto minmax(0, 1fr) auto minmax(10em, 35%);
+      #sidebar { grid-row: 1 / 5; }
+    }
+  }
+}
+#sidebar {
+  grid-row: 1 / 4; min-height: 0; display: flex; flex-direction: column;
+  border-right: 1px solid #cfcfcf;
+  nav {
+    display: flex; border-bottom: 1px solid #cfcfcf;
+    button { flex: 1; padding: 0.4em; }
+  }
 }
 #file-tree {
-  grid-row: 1 / 4; overflow: auto; border-right: 1px solid #cfcfcf; padding: 0.375em;
+  overflow: auto; padding: 0.375em;
   button, summary {
     display: block; position: relative; width: 100%; border: 0;
     background-color: transparent;
@@ -45,13 +63,69 @@ body {
 #editor, #preview-pane { min-height: 0; overflow: auto; }
 #preview-pane { width: 100%; height: 100%; border: 0; border-left: 1px solid #cfcfcf; }
 #preview-pane[hidden], #mode-toggle[hidden] { display: none; }
-main.plain-file #editor { grid-column: 2 / -1; }
 #file-status { grid-column: 2 / -1; grid-row: 3; }
 #file-status:empty { display: none; }
 #file-status:not(:empty) { padding: 0.3em 0.6em; border-top: 1px solid #cfcfcf; }
 #terminal-controls[hidden], #terminal-pane[hidden] { display: none; }
-body main.terminal-open { grid-template-rows: auto minmax(0, 1fr) auto minmax(10em, 35%); }
-body main.terminal-open #file-tree { grid-row: 1 / 5; }
+#git-pane {
+  flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0.375em;
+  &[hidden] { display: none; }
+  .git-header { display: flex; align-items: center; gap: 0.3em; }
+  .git-root { overflow-wrap: anywhere; font-size: 0.8em; margin: 0.4em 0; }
+  .git-message { overflow-wrap: anywhere; }
+  .git-list { flex: 1; min-height: 0; overflow: auto; }
+  .git-page { height: 60em; } /* 40 rows at 1.5em each */
+  .git-page-last { height: auto; }
+  .git-row {
+    height: 1.5em; display: flex; align-items: center; gap: 0.25em; overflow: hidden;
+    .git-file { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+      text-align: left; color: inherit; text-decoration: none;
+      &:hover { text-decoration: underline; }
+    }
+    .git-status {
+      display: inline-block; min-width: 1.2em; text-align: center;
+      font: bold 0.85em ui-monospace, monospace; color: #875400;
+      &[data-status="?"], &[data-status="A"] { color: #006b36; }
+      &[data-status="D"], &[data-status="U"] { color: #a62222; }
+      &[data-status="R"], &[data-status="C"] { color: #0058a3; }
+    }
+    input { margin: 0; flex: none; cursor: pointer; }
+  }
+}
+#git-diff {
+  grid-column: 2 / -1; grid-row: 2; min-width: 0; min-height: 0;
+  display: flex; flex-direction: column;
+  &[hidden] { display: none; }
+  > .git-diff-header { display: flex; justify-content: space-between; gap: 1em; padding: 0.4em; }
+  #git-diff-content {
+    flex: 1; min-height: 0; overflow: auto;
+    &::after { content: ""; display: block; height: calc(100% - 3em); }
+  }
+  .git-diff-file {
+    min-height: 4em; border-top: 1px solid #cfcfcf;
+    &:not([open]) { min-height: 0; }
+    summary { position: sticky; top: 0; z-index: 1; padding: 0.5em;
+      background: var(--bg); cursor: pointer; overflow-wrap: anywhere; }
+    h3 { display: inline; margin: 0; font-size: 1em; }
+    .git-diff-text {
+      display: grid; grid-template-columns: max-content max-content minmax(0, 1fr);
+      margin: 0; padding: 0.6em 0; overflow: visible; background: transparent;
+      white-space: normal; font: 0.875em/1.5 ui-monospace, monospace;
+    }
+    .git-diff-row { display: contents; }
+    .git-diff-line { min-width: 0; padding-right: 0.6em; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .git-gutter {
+      min-width: 2.5em; padding-right: 0.5em; background: var(--code-bg);
+      text-align: right; color: #666; user-select: none;
+    }
+    .git-old-gutter::before, .git-new-gutter button::before { content: attr(data-line); }
+    .git-new-gutter button {
+      padding: 0; border: 0; background: none; color: #0058a3; font: inherit; cursor: pointer;
+      &:hover { text-decoration: underline; }
+      &:disabled { color: #666; cursor: not-allowed; text-decoration: none; }
+    }
+  }
+}
 #terminal-pane {
   grid-column: 2 / -1; grid-row: 4; min-height: 0; display: flex; flex-direction: column;
   border-top: 1px solid #cfcfcf;
@@ -61,22 +135,34 @@ body main.terminal-open #file-tree { grid-row: 1 / 5; }
 .cm-editor {
   height: 100%;
   .cm-scroller { font-family: ui-monospace, monospace; }
+  &.visual {
+    .cm-scroller { font-family: system-ui, sans-serif; }
+    .cm-content { font-family: inherit; }
+    .dj-source { font-family: ui-monospace, monospace; }
+  }
 }
-.cm-editor.visual .cm-scroller { font-family: system-ui, sans-serif; }
-.cm-editor.visual .cm-content { font-family: inherit; }
-.cm-editor.visual .dj-source { font-family: ui-monospace, monospace; }
 @media (max-width: 43.75em) {
-  body main { grid-template-columns: 11.25em 1fr; grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr) auto; }
-  body main.plain-file { grid-template-rows: auto minmax(0, 1fr) auto; }
-  #file-tree { grid-row: 1 / 5; }
-  main.plain-file #file-tree { grid-row: 1 / 4; }
+  body main {
+    grid-template-columns: 11.25em 1fr; grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr) auto;
+    &.plain-file {
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      #sidebar { grid-row: 1 / 4; }
+      #git-diff { grid-row: 2; }
+      #file-status { grid-row: 3; }
+      #terminal-pane { grid-row: 4; }
+    }
+    &.terminal-open {
+      grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr) auto minmax(10em, 35%);
+      #sidebar { grid-row: 1 / 6; }
+      &.plain-file {
+        grid-template-rows: auto minmax(0, 1fr) auto minmax(10em, 35%);
+        #sidebar { grid-row: 1 / 5; }
+      }
+    }
+  }
+  #sidebar { grid-row: 1 / 5; }
+  #git-diff { grid-row: 2 / 4; }
   #preview-pane { border-left: 0; border-top: 1px solid #cfcfcf; }
   #file-status { grid-row: 4; }
-  main.plain-file #file-status { grid-row: 3; }
   #terminal-pane { grid-row: 5; }
-  main.plain-file #terminal-pane { grid-row: 4; }
-  body main.terminal-open { grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr) auto minmax(10em, 35%); }
-  body main.plain-file.terminal-open { grid-template-rows: auto minmax(0, 1fr) auto minmax(10em, 35%); }
-  body main.terminal-open #file-tree { grid-row: 1 / 6; }
-  body main.plain-file.terminal-open #file-tree { grid-row: 1 / 5; }
 }

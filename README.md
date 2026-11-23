@@ -99,6 +99,25 @@ up to 256 KiB of output. A disconnected process is stopped after two minutes.
 On Unix it opens `$SHELL` (or `/bin/sh`); on Windows it opens `%COMSPEC%`
 (or `cmd.exe`) and requires ConPTY (Windows 10 version 1809 or later).
 
+## Git
+
+When Git is installed, open the Git sidebar to see the nearest repository for
+the active file. Clicking a folder in Files selects that directory instead.
+Use Project root to select the starting directory again.
+Switch files or folders to work with multiple repositories, including nested
+ones. The pane shows the whole repository even when its root is above the
+directory passed to `-project`.
+
+Select a changed file to review all diffs; each diff loads as it comes into
+view. Check or uncheck files to stage or unstage them. Git uses saved files, so
+save editor changes first. The active pane refreshes automatically every five
+seconds; use Refresh to check immediately.
+A mixed checkbox means a file has both staged and unstaged changes; checking it
+stages the remaining changes. Its diff compares the working file with the
+staged version.
+Long diff lines wrap. Click a new-file line number to open that line in the
+editor; files outside the project root cannot be opened this way.
+
 ## Test
 
 ```bash

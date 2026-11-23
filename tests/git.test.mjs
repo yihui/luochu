@@ -1,0 +1,53 @@
+import { test } from "node:test";
+import { deepStrictEqual } from "node:assert";
+import { diffLineNumbers, statusRows } from "../web/git.js";
+
+test("diff gutters count old and new lines across hunks", () => {
+  const diff = [
+    "diff --git a/file b/file",
+    "--- a/file",
+    "+++ b/file",
+    "@@ -2,3 +2,4 @@",
+    " context",
+    "-removed",
+    "+added",
+    "+another",
+    " context",
+    "@@ -20 +21 @@",
+    "-old",
+    "+new",
+    "\\ No newline at end of file",
+  ].join("\n") + "\n";
+  deepStrictEqual(diffLineNumbers(diff), [
+    { old: null, current: null }, { old: null, current: null }, { old: null, current: null },
+    { old: null, current: null }, { old: 2, current: 2 }, { old: 3, current: null },
+    { old: null, current: 3 }, { old: null, current: 4 }, { old: 4, current: 5 },
+    { old: null, current: null }, { old: 20, current: null }, { old: null, current: 21 },
+    { old: null, current: null },
+  ]);
+});
+
+test("new-file and binary diffs have correct gutters", () => {
+  deepStrictEqual(diffLineNumbers("@@ -0,0 +1,2 @@\n+first\n+second"), [
+    { old: null, current: null }, { old: null, current: 1 }, { old: null, current: 2 },
+  ]);
+  deepStrictEqual(diffLineNumbers("Binary files a/file and b/file differ\n"), [{ old: null, current: null }]);
+});
+
+test("status combines staged and unstaged changes by file", () => {
+  const rows = statusRows([
+    { path: "partial", xy: "MM", projectPath: "partial" },
+    { path: "staged", xy: "M " },
+    { path: "unstaged", xy: " M" },
+    { path: "recreated", xy: "D " },
+    { path: "recreated", xy: "??" },
+    { path: "conflict", xy: "UU" },
+  ]);
+  deepStrictEqual(rows.map(({ path, staged, unstaged, status }) => ({ path, staged, unstaged, status })), [
+    { path: "partial", staged: true, unstaged: true, status: "M" },
+    { path: "staged", staged: true, unstaged: false, status: "M" },
+    { path: "unstaged", staged: false, unstaged: true, status: "M" },
+    { path: "recreated", staged: true, unstaged: true, status: "D?" },
+    { path: "conflict", staged: false, unstaged: true, status: "UU" },
+  ]);
+});

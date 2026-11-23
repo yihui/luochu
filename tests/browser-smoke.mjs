@@ -1,7 +1,9 @@
 import { chromium } from "playwright";
 import * as esbuild from "esbuild";
 import { spawn, spawnSync } from "node:child_process";
-import { rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const port = 48771, binary = `/tmp/luochu-browser-test-${process.pid}`,
   cwd = new URL("..", import.meta.url),
@@ -34,7 +36,7 @@ try {
   browser = await chromium.launch({ headless: true });
   const noMathBundle = await esbuild.build({
     entryPoints: ["web/main.js"], bundle: true, format: "iife", write: false,
-    loader: { ".dj": "text" }, external: ["./math.js", "./terminal.js"], minify: true,
+    loader: { ".dj": "text" }, external: ["./math.js", "./terminal.js", "./git.js"], minify: true,
     define: { "process.env.NODE_ENV": '"production"' },
     plugins: [{ name: "no-math-demo", setup(build) {
       build.onLoad({ filter: /demo\.dj$/ }, () => ({ contents: "A document without math.", loader: "text" }));
@@ -265,6 +267,482 @@ try {
   if (layout.tabs > layout.editorTop || layout.editorBottom > layout.previewTop)
     throw new Error(`Mobile tabs, editor, and preview overlap: ${JSON.stringify(layout)}`);
   await treePage.close();
+
+  const gitPage = await browser.newPage({ viewport: { width: 1100, height: 750 } }), gitRequests = [],
+    diffRequests = [];
+  await gitPage.clock.install();
+  const numberedFixture = [
+    "diff --git a/one.txt b/one.txt", "--- a/one.txt", "+++ b/one.txt", "@@ -2,3 +2,4 @@",
+    " context", "-removed", `+added ${"x".repeat(500)}`, "+another", " context",
+    "@@ -20 +21 @@", "-old", "+new", "\\ No newline at end of file",
+  ].join("\n") + "\n";
+  let staged = false, partialStatus = "MM", lastDiffVersion = 1, rejectNextStage = false, rejectNextStatus = false,
+    pauseNextStatus = false, statusGate, releaseStatus, statusStarted;
+  gitPage.on("request", (request) => {
+    if (/\/assets\/git\.js$/.test(new URL(request.url()).pathname)) gitRequests.push("asset");
+  });
+  await gitPage.route("**/api/capabilities", (route) =>
+    route.fulfill({ json: { capabilities: { git: true, terminal: false } } }));
+  await gitPage.route("**/api/files?*", (route) => {
+    const dir = new URL(route.request().url()).searchParams.get("path");
+    const entries = dir === "" ? ["one", "two"].map((name) => ({ name, path: name, type: "directory" }))
+      : [{ name: `${dir}.txt`, path: `${dir}/${dir}.txt`, type: "file" }];
+    return route.fulfill({ json: entries });
+  });
+  await gitPage.route("**/api/file?*", (route) => {
+    const path = new URL(route.request().url()).searchParams.get("path");
+    const body = path === "one/one.txt"
+      ? Array.from({ length: 30 }, (_, i) => `saved line ${i + 1}`).join("\n") : "saved file";
+    return route.fulfill({ body, headers: { "X-Luochu-Hash": "hash" } });
+  });
+  await gitPage.route("**/api/git?*", async (route) => {
+    const params = new URL(route.request().url()).searchParams, dir = params.get("dir");
+    gitRequests.push(dir);
+    if (route.request().method() === "POST") {
+      if (rejectNextStage) {
+        rejectNextStage = false;
+        return route.fulfill({ status: 409, body: "index locked" });
+      }
+      const { path, action } = JSON.parse(route.request().postData());
+      if (path === "file-0001.txt") partialStatus = action === "stage" ? "M " : " M";
+      else staged = action === "stage";
+      if (pauseNextStatus) {
+        pauseNextStatus = false;
+        statusGate = new Promise((resolve) => { releaseStatus = resolve; });
+      }
+      return route.fulfill({ status: 204 });
+    }
+    if (params.has("file")) {
+      const file = params.get("file");
+      diffRequests.push({ file, group: params.get("group") });
+      if (file === "file-0001.txt") await new Promise((resolve) => setTimeout(resolve, 150));
+      const body = file === "one.txt" ? numberedFixture : file === "file-1002.txt"
+        ? `diff for ${file}\nlast diff version ${lastDiffVersion}` : file === "file-0002.txt"
+        ? `diff for ${file}\n@@ -0,0 +1,150 @@\n${Array.from({ length: 150 }, (_, i) =>
+          `+line ${i}${i === 0 ? "x".repeat(500) : ""}`).join("\n")}\n`
+        : /^file-000[1-3]\.txt$/.test(file)
+        ? `diff for ${file}\n${file === "file-0001.txt" ? `${params.get("group")} diff\n` : ""}${Array.from({ length: 150 }, (_, i) => `line ${i}`).join("\n")}`
+        : `diff for ${file}`;
+      return route.fulfill({ body });
+    }
+    if (!dir) return route.fulfill({ status: 404, body: "Not a Git repository" });
+    if (statusGate) {
+      const gate = statusGate;
+      statusGate = null;
+      statusStarted();
+      await gate;
+    }
+    if (rejectNextStatus) {
+      rejectNextStatus = false;
+      return route.fulfill({ status: 503, body: "status unavailable" });
+    }
+    const changes = dir === "one" ? Array.from({ length: 1003 }, (_, i) => ({
+      path: i === 3 ? "one.txt" : `file-${String(i).padStart(4, "0")}.txt`,
+      projectPath: i === 2 ? undefined : `one/${i === 3 ? "one.txt" : `file-${String(i).padStart(4, "0")}.txt`}`,
+      xy: i === 1 ? partialStatus : i === 0 && staged ? "M " : " M",
+    })) : [{ path: "other.txt", projectPath: "other.txt", xy: "??" }];
+    return route.fulfill({ json: { root: `/repos/${dir}`, relativeRoot: dir === "two" ? "." : dir, branch: dir, changes } });
+  });
+  await gitPage.goto(`http://127.0.0.1:${port}/proxy/?token=${token}`);
+  await gitPage.locator("#git-toggle").waitFor({ state: "visible" });
+  if (gitRequests.length) throw new Error("Git was loaded before opening its pane");
+  await gitPage.locator("#file-tree").getByText("one", { exact: true }).click();
+  await gitPage.locator("#file-tree").getByText("one.txt", { exact: true }).click();
+  await gitPage.waitForFunction(() => document.title === "Luochu - one/one.txt");
+  await gitPage.evaluate(() => {
+    const view = window.__LUOCHU_EDITOR_VIEW__;
+    view.dispatch({ changes: { from: view.state.doc.length, insert: " unsaved" } });
+  });
+  await gitPage.locator("#git-toggle").click();
+  await gitPage.getByRole("link", { name: "M file-0002.txt", exact: true }).waitFor();
+  const displayedRoot = gitPage.locator("#git-pane .git-root");
+  if (await displayedRoot.textContent() !== "one" || await displayedRoot.getAttribute("title") !== "/repos/one" ||
+      await gitPage.getByText("Git shows saved files", { exact: false }).count())
+    throw new Error("Git repository label or reminder is incorrect");
+  if (await gitPage.locator("#git-pane .git-row").count() > 120 ||
+      await gitPage.locator("#git-pane .git-list [style]").count())
+    throw new Error("Git status list was not virtualized");
+  if (await gitPage.locator("#git-pane .git-row button").count() ||
+      await gitPage.locator("#git-pane .git-row").first().evaluate((node) => node.getBoundingClientRect().height) >= 32)
+    throw new Error("Git status rows are not compact or still use buttons");
+  const partialCheckbox = gitPage.getByRole("checkbox", { name: "Stage file-0001.txt", exact: true });
+  if (await gitPage.getByRole("link", { name: "M file-0001.txt", exact: true }).count() !== 1 ||
+      !await partialCheckbox.evaluate((node) => node.indeterminate) ||
+      await gitPage.locator("#git-pane").getByText(/^(Staged|Unstaged) \(\d+\)$/).count())
+    throw new Error("Partially staged file is duplicated, not mixed, or still grouped");
+  const badge = gitPage.getByRole("link", { name: "M file-0002.txt", exact: true }).locator(".git-status");
+  if (await badge.textContent() !== "M" ||
+      await badge.evaluate((node) => getComputedStyle(node).fontWeight) < 600)
+    throw new Error("Git status character is not visually distinct");
+  rejectNextStage = true;
+  await gitPage.getByRole("checkbox", { name: "Stage file-0002.txt", exact: true }).click();
+  await gitPage.getByText("Git operation failed: index locked", { exact: true }).waitFor();
+  if (await gitPage.getByRole("checkbox", { name: "Stage file-0002.txt", exact: true }).isChecked())
+    throw new Error("A failed stage left its checkbox checked");
+  rejectNextStage = true;
+  await partialCheckbox.click();
+  await gitPage.getByText("Git operation failed: index locked", { exact: true }).waitFor();
+  if (!await partialCheckbox.evaluate((node) => node.indeterminate))
+    throw new Error("A failed stage did not restore the partially staged checkbox");
+  await gitPage.getByRole("checkbox", { name: "Stage file-0000.txt", exact: true }).check();
+  await gitPage.getByRole("checkbox", { name: "Unstage file-0000.txt", exact: true }).waitFor();
+  await gitPage.getByRole("link", { name: "M file-0000.txt", exact: true }).click();
+  await gitPage.getByText("diff for file-0000.txt", { exact: true }).waitFor();
+  const shortSizing = await gitPage.getByText("diff for file-0000.txt", { exact: true }).evaluate((node) => {
+    const scroll = node.closest(".git-diff-scroll");
+    const text = scroll.querySelector(".git-diff-text"), gutters = scroll.querySelectorAll(".git-gutter");
+    return { textRight: text.getBoundingClientRect().right, scrollRight: scroll.getBoundingClientRect().right,
+      width: scroll.clientWidth, contentWidth: scroll.scrollWidth,
+      background: getComputedStyle(text).backgroundColor,
+      gutterBackgrounds: [...gutters].map((gutter) => getComputedStyle(gutter).backgroundColor) };
+  });
+  if (Math.abs(shortSizing.textRight - shortSizing.scrollRight) > 1 || shortSizing.contentWidth > shortSizing.width + 1)
+    throw new Error(`Short diff does not fill the available width: ${JSON.stringify(shortSizing)}`);
+  if (shortSizing.background !== "rgba(0, 0, 0, 0)" ||
+      shortSizing.gutterBackgrounds.some((background) => background === "rgba(0, 0, 0, 0)"))
+    throw new Error(`Diff text or gutters have the wrong background: ${JSON.stringify(shortSizing)}`);
+  if (await gitPage.locator("#git-diff .git-diff-file").count() !== 1003 ||
+      await gitPage.locator("#git-diff h3").filter({ hasText: "file-0001.txt" }).count() !== 1)
+    throw new Error("Review does not have exactly one diff for each file");
+  if (diffRequests.length > 40 || diffRequests.some(({ file }) => file === "file-1002.txt"))
+    throw new Error("Off-screen diffs were loaded eagerly");
+  await gitPage.getByRole("link", { name: "M file-0001.txt", exact: true }).click();
+  await gitPage.getByRole("heading", { name: "file-0001.txt", exact: true }).waitFor();
+  await gitPage.getByText("diff for file-0001.txt", { exact: true }).waitFor();
+  if (!diffRequests.some(({ file, group }) => file === "file-0001.txt" && group === "unstaged") ||
+      diffRequests.some(({ file, group }) => file === "file-0001.txt" && group === "staged"))
+    throw new Error("A partially staged file did not use the index-to-working-tree diff");
+  await gitPage.evaluate(() => {
+    const list = document.querySelector("#git-pane .git-list"),
+      row = [...list.querySelectorAll(".git-row")].find((item) => item.textContent.includes("file-0000.txt")),
+      section = [...document.querySelectorAll("#git-diff .git-diff-file")]
+        .find((item) => item.querySelector("h3").textContent.endsWith("file-0000.txt"));
+    window.__gitTest = { row, section, source: section.querySelector("pre"), listScroll: list.scrollTop,
+      diffScroll: document.querySelector("#git-diff-content").scrollTop };
+  });
+  const firstDiffRequests = diffRequests.filter(({ file }) => file === "file-0000.txt").length,
+    statusStart = new Promise((resolve) => { statusStarted = resolve; });
+  pauseNextStatus = true;
+  await partialCheckbox.click();
+  await statusStart;
+  const requestsWhileBusy = gitRequests.length;
+  await gitPage.clock.fastForward(5000);
+  if (gitRequests.length !== requestsWhileBusy)
+    throw new Error("Automatic refresh ran during a Git operation");
+  if (!await gitPage.evaluate(() => window.__gitTest.row.isConnected &&
+      window.__gitTest.section.isConnected && window.__gitTest.source.isConnected))
+    throw new Error("Git status or unrelated diff disappeared while the status refreshed");
+  releaseStatus();
+  await gitPage.getByRole("checkbox", { name: "Unstage file-0001.txt", exact: true }).waitFor();
+  await gitPage.getByText("staged diff", { exact: true }).waitFor();
+  const kept = await gitPage.evaluate(() => {
+    const { row, section, source, listScroll, diffScroll } = window.__gitTest;
+    return { row: row.isConnected, section: section.isConnected, source: source.isConnected,
+      focus: document.activeElement?.getAttribute("aria-label") === "Unstage file-0001.txt",
+      listScroll: document.querySelector("#git-pane .git-list").scrollTop - listScroll,
+      diffScroll: document.querySelector("#git-diff-content").scrollTop - diffScroll };
+  });
+  if (!kept.row || !kept.section || !kept.source || !kept.focus || kept.listScroll || kept.diffScroll ||
+      diffRequests.filter(({ file }) => file === "file-0000.txt").length !== firstDiffRequests)
+    throw new Error(`Staging unnecessarily rebuilt or moved the Git pane: ${JSON.stringify(kept)}`);
+  rejectNextStatus = true;
+  await gitPage.getByRole("checkbox", { name: "Unstage file-0001.txt", exact: true }).click();
+  await gitPage.getByText("Could not refresh Git status: status unavailable", { exact: true }).waitFor();
+  await gitPage.getByRole("checkbox", { name: "Unstage file-0001.txt", exact: true }).click();
+  await gitPage.getByText("Git status is stale; refresh before staging or unstaging.", { exact: true }).waitFor();
+  await gitPage.getByRole("button", { name: "Refresh", exact: true }).click();
+  await gitPage.getByRole("checkbox", { name: "Stage file-0001.txt", exact: true }).waitFor();
+  await gitPage.getByRole("link", { name: "M file-0002.txt", exact: true }).click();
+  const selectedDiff = gitPage.locator("#git-diff .git-diff-file").filter({
+    has: gitPage.getByRole("heading", { name: "file-0002.txt", exact: true }),
+  });
+  await gitPage.waitForFunction(() => [...document.querySelectorAll("#git-diff pre")]
+    .some((node) => node.textContent.includes("diff for file-0002.txt\n") && node.textContent.includes("line 149")));
+  const longSizing = await selectedDiff.locator(".git-diff-scroll").evaluate((scroll) => {
+    const rows = scroll.querySelectorAll(".git-diff-row"), firstLine = rows[2].querySelector(".git-diff-line"),
+      nextLine = rows[3].querySelector(".git-diff-line"), nextNumber = rows[3].querySelector("button");
+    return {
+      width: scroll.clientWidth, contentWidth: scroll.scrollWidth, height: firstLine.getBoundingClientRect().height,
+      lineHeight: parseFloat(getComputedStyle(firstLine).lineHeight), nextHeight: nextLine.getBoundingClientRect().height,
+      alignment: Math.abs(nextLine.getBoundingClientRect().top - nextNumber.getBoundingClientRect().top),
+    };
+  });
+  if (longSizing.contentWidth > longSizing.width + 1 || longSizing.height < longSizing.lineHeight * 2 ||
+      longSizing.nextHeight > longSizing.lineHeight * 1.1 || longSizing.alignment > 3)
+    throw new Error(`Long diff did not wrap with aligned gutters: ${JSON.stringify(longSizing)}`);
+  if (!await selectedDiff.getByRole("button", { name: "Open file-0002.txt at line 1", exact: true }).isDisabled())
+    throw new Error("A file outside the project root has a clickable line number");
+  await gitPage.waitForTimeout(300);
+  const selectedTop = await selectedDiff.locator("summary").evaluate((node) => ({
+    top: node.getBoundingClientRect().top,
+    viewport: node.closest("#git-diff-content").getBoundingClientRect().top,
+  }));
+  if (Math.abs(selectedTop.top - selectedTop.viewport) > 2)
+    throw new Error(`Clicking a status path did not navigate to its diff: ${JSON.stringify(selectedTop)}`);
+  const diffBounds = await gitPage.locator("#git-diff-content").boundingBox();
+  await gitPage.mouse.move(diffBounds.x + diffBounds.width / 2, diffBounds.y + 120);
+  await gitPage.mouse.wheel(0, 250);
+  await gitPage.waitForTimeout(150);
+  const sticky = await selectedDiff.locator("summary").evaluate((node) => ({
+    top: node.getBoundingClientRect().top,
+    viewport: node.closest("#git-diff-content").getBoundingClientRect().top,
+    sectionTop: node.parentElement.getBoundingClientRect().top,
+  }));
+  if (sticky.sectionTop >= sticky.viewport || Math.abs(sticky.top - sticky.viewport) > 2)
+    throw new Error(`Diff heading did not stick while scrolling: ${JSON.stringify(sticky)}`);
+  await selectedDiff.locator("summary").click();
+  if (await selectedDiff.evaluate((node) => node.open) || await selectedDiff.locator(".git-diff-text").isVisible())
+    throw new Error("Clicking a diff heading did not fold its content");
+  await selectedDiff.locator("summary").click();
+  if (!await selectedDiff.evaluate((node) => node.open) || !await selectedDiff.locator(".git-diff-text").isVisible())
+    throw new Error("Clicking a folded diff heading did not reopen it");
+  await gitPage.setViewportSize({ width: 600, height: 700 });
+  await gitPage.getByRole("link", { name: "M one.txt", exact: true }).click();
+  const numberedDiff = gitPage.locator("#git-diff .git-diff-file").filter({
+    has: gitPage.getByRole("heading", { name: "one.txt", exact: true }),
+  });
+  await numberedDiff.getByRole("button", { name: "Open one.txt at line 21", exact: true }).waitFor();
+  const gutters = await numberedDiff.evaluate((node) => {
+    const rows = [...node.querySelectorAll(".git-diff-row")], source = node.querySelector(".git-diff-text"),
+      scroll = node.querySelector(".git-diff-scroll"), wrapped = rows[6].querySelector(".git-diff-line"),
+      text = rows[11].querySelector(".git-diff-line").firstChild, range = document.createRange();
+    range.setStart(text, 0);
+    range.setEnd(text, 4);
+    const line = range.getBoundingClientRect(), number = rows[11].querySelector("button").getBoundingClientRect(),
+      selection = window.getSelection(), selected = document.createRange();
+    selected.selectNodeContents(source);
+    selection.removeAllRanges();
+    selection.addRange(selected);
+    const copied = selection.toString();
+    selection.removeAllRanges();
+    return {
+      old: rows.map((row) => row.querySelector(".git-old-gutter").dataset.line || ""),
+      current: rows.map((row) => row.querySelector("button")?.dataset.line || ""),
+      oldButtons: node.querySelectorAll(".git-old-gutter button").length,
+      styles: [rows[11].querySelector(".git-old-gutter"), rows[11].querySelector(".git-new-gutter"),
+        rows[11].querySelector(".git-diff-line")].map((element) => getComputedStyle(element).lineHeight),
+      alignment: Math.abs((line.top + line.bottom - number.top - number.bottom) / 2),
+      copied, raw: source.textContent, width: scroll.clientWidth, contentWidth: scroll.scrollWidth,
+      wrappedHeight: wrapped.getBoundingClientRect().height,
+    };
+  });
+  if (gutters.old[4] !== "2" || gutters.old[5] !== "3" || gutters.old[6] !== "" ||
+      gutters.current[4] !== "2" || gutters.current[5] !== "" || gutters.current[6] !== "3" ||
+      gutters.current[11] !== "21" || gutters.oldButtons || new Set(gutters.styles).size !== 1 ||
+      gutters.alignment > 2 || gutters.width + 1 < gutters.contentWidth ||
+      gutters.wrappedHeight < parseFloat(gutters.styles[0]) * 2 ||
+      gutters.raw !== numberedFixture || gutters.copied !== numberedFixture.replace(/\n$/, ""))
+    throw new Error(`Diff line-number gutters are incorrect: ${JSON.stringify(gutters)}`);
+  await numberedDiff.getByRole("button", { name: "Open one.txt at line 21", exact: true }).click();
+  const jump = await gitPage.evaluate(() => {
+    const view = window.__LUOCHU_EDITOR_VIEW__;
+    return { line: view.state.doc.lineAt(view.state.selection.main.head).number,
+      dirty: view.state.doc.toString().endsWith(" unsaved") };
+  });
+  if (jump.line !== 21 || !jump.dirty || await gitPage.locator("#git-diff").isVisible())
+    throw new Error(`New-line navigation lost the dirty buffer or landed incorrectly: ${JSON.stringify(jump)}`);
+  await gitPage.setViewportSize({ width: 1100, height: 750 });
+  await gitPage.getByRole("link", { name: "M file-0002.txt", exact: true }).click();
+  await gitPage.locator("#git-diff-content").hover();
+  await gitPage.mouse.wheel(0, 100);
+  await gitPage.locator("#git-diff-content").evaluate((node) => { node.scrollTop = node.scrollHeight; });
+  await gitPage.getByText("diff for file-1002.txt", { exact: true }).waitFor();
+  if (!diffRequests.some(({ file }) => file === "file-1002.txt"))
+    throw new Error("Scrolling did not load the final diff");
+  await gitPage.locator("#git-diff-content").evaluate((node) => { node.scrollTop = 0; });
+  await gitPage.waitForTimeout(100);
+  lastDiffVersion = 2;
+  const lastRequests = diffRequests.filter(({ file }) => file === "file-1002.txt").length,
+    polledStatus = gitPage.waitForResponse((response) =>
+      response.request().method() === "GET" && response.url().includes("api/git?") &&
+      !new URL(response.url()).searchParams.has("file"));
+  await gitPage.clock.fastForward(5000);
+  await polledStatus;
+  await gitPage.waitForTimeout(100);
+  if (diffRequests.filter(({ file }) => file === "file-1002.txt").length !== lastRequests)
+    throw new Error("Automatic refresh loaded an off-screen diff");
+  await gitPage.locator("#git-diff-content").evaluate((node) => { node.scrollTop = node.scrollHeight; });
+  await gitPage.getByText("last diff version 2", { exact: true }).waitFor();
+  await gitPage.getByRole("button", { name: "Close diff" }).click();
+  if (!await gitPage.evaluate(() => window.__LUOCHU_EDITOR_VIEW__.state.doc.toString().endsWith(" unsaved")))
+    throw new Error("Git diff lost the dirty editor buffer");
+  await gitPage.getByRole("checkbox", { name: "Unstage file-0000.txt", exact: true }).uncheck();
+  await gitPage.getByRole("checkbox", { name: "Stage file-0000.txt", exact: true }).waitFor();
+  const gitList = gitPage.locator("#git-pane .git-list");
+  await gitList.evaluate((node) => { node.scrollTop = node.scrollHeight / 2; });
+  await gitPage.getByRole("link", { name: "M file-0500.txt", exact: true }).waitFor();
+  if (await gitList.locator(".git-row").count() > 160)
+    throw new Error("Scrolling rendered too many Git status rows");
+  await gitList.evaluate((node) => { node.scrollTop = node.scrollHeight; });
+  const lastLink = gitPage.getByRole("link", { name: "M file-1002.txt", exact: true });
+  await lastLink.waitFor();
+  const lastGap = await lastLink.evaluate((node) =>
+    node.closest(".git-list").getBoundingClientRect().bottom - node.closest(".git-row").getBoundingClientRect().bottom);
+  if (Math.abs(lastGap) > 2) throw new Error(`The last Git page has extra space: ${lastGap}`);
+  await lastLink.click();
+  await gitPage.getByText("diff for file-1002.txt", { exact: true }).waitFor();
+  const selectedPosition = await gitPage.locator("#git-diff h3").filter({ hasText: "file-1002.txt" })
+    .evaluate((node) => {
+      const bounds = node.getBoundingClientRect(), viewport = node.closest("#git-diff-content").getBoundingClientRect();
+      return bounds.top >= viewport.top && bounds.top < viewport.bottom;
+    });
+  if (!selectedPosition) throw new Error("Review did not navigate to the selected file");
+  await gitPage.getByRole("button", { name: "Close diff" }).click();
+  await gitPage.locator("#files-toggle").click();
+  await gitPage.locator("#file-tree").getByText("two", { exact: true }).click();
+  await gitPage.locator("#file-tree").getByText("two.txt", { exact: true }).click();
+  await gitPage.waitForFunction(() => document.title === "Luochu - two/two.txt");
+  await gitPage.locator("#git-toggle").click();
+  await gitPage.getByRole("link", { name: "? other.txt" }).waitFor();
+  if (await displayedRoot.isVisible()) throw new Error("Project-root repository should not show a path");
+  await gitPage.locator("#file-tabs").getByRole("button", { name: "one.txt *" }).click();
+  await gitPage.getByRole("link", { name: "M file-0002.txt", exact: true }).waitFor();
+  await gitPage.setViewportSize({ width: 600, height: 700 });
+  await gitPage.getByRole("link", { name: "M file-0000.txt", exact: true }).click();
+  if (!await gitPage.locator("#git-diff").isVisible())
+    throw new Error("Git diff is not visible at narrow width");
+  await gitPage.close();
+
+  if (spawnSync("git", ["--version"]).status === 0) {
+    const fixture = mkdtempSync(join(tmpdir(), "luochu-git-browser-"));
+    let gitServer;
+    try {
+      for (const name of ["first", "second"]) {
+        const dir = join(fixture, name);
+        mkdirSync(dir);
+        const init = spawnSync("git", ["init", "-q", dir], { encoding: "utf8" });
+        if (init.status !== 0) throw new Error(init.stderr);
+        writeFileSync(join(dir, `${name}.txt`), `${name} content\n`);
+      }
+      gitServer = spawn(binary, ["-port", "0", "-project", fixture, "-base-path", "/proxy"], {
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      const gitURL = await new Promise((resolve, reject) => {
+        let output = "";
+        const timeout = setTimeout(() => reject(new Error("Git fixture server did not start")), 30000),
+          read = (chunk) => {
+            output += chunk.toString();
+            const match = output.match(/http:\/\/127\.0\.0\.1:\d+\/proxy\/\?token=[A-Za-z0-9_-]+/);
+            if (match) { clearTimeout(timeout); resolve(match[0]); }
+          };
+        gitServer.stdout.on("data", read);
+        gitServer.stderr.on("data", read);
+        gitServer.once("exit", (code) => {
+          clearTimeout(timeout);
+          reject(new Error(`Git fixture server exited ${code}: ${output}`));
+        });
+      });
+      const realGitPage = await browser.newPage(), realStatusRequests = [];
+      await realGitPage.clock.install();
+      realGitPage.on("request", (request) => {
+        const url = new URL(request.url());
+        if (url.pathname.endsWith("/api/git") && !url.searchParams.has("file") &&
+            request.method() === "GET") realStatusRequests.push(url.searchParams.get("dir"));
+      });
+      await realGitPage.goto(gitURL);
+      await realGitPage.locator("#file-tree").getByText("first", { exact: true }).click();
+      await realGitPage.locator("#git-toggle").click();
+      await realGitPage.getByRole("link", { name: "? first.txt" }).click();
+      await realGitPage.getByText("+first content", { exact: false }).waitFor();
+      await realGitPage.getByRole("button", { name: "Open first.txt at line 1", exact: true }).click();
+      await realGitPage.waitForFunction(() => document.title === "Luochu - first/first.txt");
+      await realGitPage.getByRole("link", { name: "? first.txt" }).click();
+      await realGitPage.getByRole("checkbox", { name: "Stage first.txt", exact: true }).check();
+      await realGitPage.getByRole("checkbox", { name: "Unstage first.txt", exact: true }).waitFor();
+      if (!await realGitPage.locator("#git-diff").isVisible())
+        throw new Error("Staging closed the diff review");
+      const stagedStatus = spawnSync("git", ["-C", join(fixture, "first"), "status", "--porcelain"], {
+        encoding: "utf8",
+      });
+      if (!stagedStatus.stdout.startsWith("A  first.txt"))
+        throw new Error(`Real Git stage failed: ${stagedStatus.stdout} ${stagedStatus.stderr}`);
+      const stagedDiff = realGitPage.locator("#git-diff .git-diff-file").filter({
+        has: realGitPage.getByRole("heading", { name: "first.txt", exact: true }),
+      });
+      await stagedDiff.getByRole("button", { name: "Open first.txt at line 1", exact: true }).click();
+      await realGitPage.getByRole("link", { name: "A first.txt", exact: true }).click();
+      writeFileSync(join(fixture, "first", "first.txt"), "first content\nmodified again\n");
+      await realGitPage.clock.fastForward(5000);
+      const partial = realGitPage.getByRole("checkbox", { name: "Stage first.txt", exact: true });
+      await partial.waitFor({ timeout: 10000 });
+      const partialDiff = realGitPage.locator("#git-diff .git-diff-file").filter({
+        has: realGitPage.getByRole("heading", { name: "first.txt", exact: true }),
+      });
+      await partialDiff.getByText("+modified again", { exact: false }).waitFor();
+      if (!await partial.evaluate((node) => node.indeterminate) ||
+          await realGitPage.getByRole("link", { name: "AM first.txt", exact: true }).count() !== 1 ||
+          await realGitPage.locator("#git-diff h3").filter({ hasText: "first.txt" }).count() !== 1 ||
+          await partialDiff.getByText("+first content", { exact: false }).count())
+        throw new Error("Real partially staged file did not show only its working-tree changes");
+      await partial.focus();
+      await partial.evaluate((node) => { window.__gitUnchangedRow = node.closest(".git-row"); });
+      await partialDiff.locator("pre").evaluate((node) => { window.__gitUnchangedDiff = node; });
+      const unchangedDiffResponse = realGitPage.waitForResponse((response) =>
+        response.url().includes("api/git?") && new URL(response.url()).searchParams.get("file") === "first.txt");
+      await realGitPage.clock.fastForward(5000);
+      await unchangedDiffResponse;
+      await realGitPage.waitForTimeout(100);
+      if (!await realGitPage.evaluate(() => window.__gitUnchangedDiff.isConnected &&
+          window.__gitUnchangedRow.isConnected && window.__gitUnchangedRow.contains(document.activeElement)))
+        throw new Error("Automatic refresh rebuilt unchanged Git content or lost focus");
+      writeFileSync(join(fixture, "first", "first.txt"), "first content\nmodified again\nmodified yet again\n");
+      await realGitPage.clock.fastForward(5000);
+      await partialDiff.getByText("+modified yet again", { exact: false }).waitFor({ timeout: 10000 });
+      if (!await partial.evaluate((node) => node.indeterminate))
+        throw new Error("Refreshing an already-modified file changed its staging state");
+      writeFileSync(join(fixture, "first", "new.txt"), "new file\n");
+      await realGitPage.clock.fastForward(5000);
+      await realGitPage.getByRole("link", { name: "? new.txt", exact: true }).waitFor({ timeout: 10000 });
+      await partial.click();
+      await realGitPage.getByRole("checkbox", { name: "Unstage first.txt", exact: true }).waitFor();
+      const stagedAgain = spawnSync("git", ["-C", join(fixture, "first"), "show", ":first.txt"], { encoding: "utf8" });
+      if (stagedAgain.status !== 0 || stagedAgain.stdout !== "first content\nmodified again\nmodified yet again\n")
+        throw new Error(`Partially staged file was not fully staged: ${stagedAgain.stdout} ${stagedAgain.stderr}`);
+      await realGitPage.getByRole("checkbox", { name: "Unstage first.txt", exact: true }).uncheck();
+      await realGitPage.getByRole("checkbox", { name: "Stage first.txt", exact: true }).waitFor();
+      await realGitPage.locator("#files-toggle").click();
+      const inactiveRequests = realStatusRequests.length;
+      await realGitPage.clock.fastForward(10000);
+      await realGitPage.waitForTimeout(100);
+      if (realStatusRequests.length !== inactiveRequests)
+        throw new Error("Git status was polled while its pane was hidden");
+      writeFileSync(join(fixture, "first", "while-hidden.txt"), "hidden change\n");
+      await realGitPage.locator("#git-toggle").click();
+      await realGitPage.getByRole("link", { name: "? while-hidden.txt", exact: true }).waitFor();
+      await realGitPage.evaluate(() => {
+        Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
+      });
+      const backgroundRequests = realStatusRequests.length;
+      await realGitPage.clock.fastForward(10000);
+      await realGitPage.waitForTimeout(100);
+      if (realStatusRequests.length !== backgroundRequests)
+        throw new Error("Git status was polled while the browser tab was hidden");
+      writeFileSync(join(fixture, "first", "background.txt"), "background change\n");
+      await realGitPage.evaluate(() => {
+        delete document.hidden;
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      await realGitPage.getByRole("link", { name: "? background.txt", exact: true }).waitFor();
+      await realGitPage.locator("#files-toggle").click();
+      await realGitPage.locator("#file-tree").getByText("second", { exact: true }).click();
+      await realGitPage.locator("#git-toggle").click();
+      await realGitPage.getByRole("link", { name: "? second.txt" }).waitFor();
+      await realGitPage.locator("#files-toggle").click();
+      await realGitPage.locator("#project-root").click();
+      await realGitPage.locator("#git-toggle").click();
+      await realGitPage.getByText("Not a Git repository", { exact: true }).waitFor();
+      await realGitPage.locator("#file-tabs").getByRole("button", { name: "first.txt", exact: true }).click();
+      await realGitPage.getByRole("link", { name: "? first.txt" }).waitFor();
+      await realGitPage.close();
+    } finally {
+      if (gitServer && gitServer.exitCode === null && gitServer.signalCode === null) {
+        const stopped = new Promise((resolve) => gitServer.once("exit", resolve));
+        gitServer.kill("SIGTERM");
+        await stopped;
+      }
+      rmSync(fixture, { recursive: true, force: true });
+    }
+  }
 
   const page = await browser.newPage({ viewport: { width: 1100, height: 750 } }), errors = [];
   let terminalSocket, terminalConnections = 0;

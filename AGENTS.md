@@ -14,6 +14,9 @@ art and current implementation.
   Issue #9 currently depends on #8's execution protocol and cache; reconcile
   that dependency when starting #9 rather than claiming native-first and
   shared-protocol support before it exists.
+- For #7, implement commits from staged changes, then branch controls, log, and
+  push. Clarify whether the issue title's agent-patch review is still in scope.
+  See README's Git section for the current behavior.
 - Terminal follow-ups: implement the error helper and test interactive
   Claude/Copilot sessions, including on Windows. Real RStudio proxy validation
   is tracked in #11.
@@ -75,10 +78,13 @@ art and current implementation.
 - The UI uses a backend-agnostic filesystem and capability flags. Do not add
   remote storage or terminals, LSP, a debugger, refactoring, or a full WYSIWYG
   migration. Dirty buffers and disk conflicts must not be overwritten silently.
+- Git follows the active file or selected folder to its nearest repository;
+  never assume a single repository per session.
 - Ship one Go server binary with embedded UI. Generated assets, source maps,
   caches, and release archives are not committed. Keep the initial JS under
   roughly 200 KB compressed and lazy-load expensive functionality.
-- Current initial app JS: 132,990 bytes gzip; lazy terminal: 72,531 bytes JS
+- Current initial app JS: 134,207 bytes gzip and CSS: 2,331 bytes gzip; lazy
+  Git: 3,810 bytes JS. Lazy terminal: 72,531 bytes JS
   and 1,733 bytes CSS gzip. Lazy KaTeX: 77,403 bytes JS and 4,168 bytes CSS
   gzip, plus fonts; the demo loads math at startup. Cold/warm timings remain
   unmeasured; see #22.
