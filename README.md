@@ -9,24 +9,18 @@ Install a prerelease on Linux or macOS with:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/yihui/luochu/main/install.sh | sh -s -- v0.1.0-alpha.1
-~/.local/bin/luochu -project /path/to/project -open
+# run: ~/.local/bin/luochu
 ```
 
 On Windows, run in PowerShell:
 
 ```powershell
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/yihui/luochu/main/install.ps1))) -Version v0.1.0-alpha.1
-& "$env:LOCALAPPDATA\Programs\Luochu\luochu.exe" -project . -open
+# run: & "$env:LOCALAPPDATA\Programs\Luochu\luochu.exe"
 ```
 
 Omit the version to install the latest stable release. The installers verify
-the release checksum and need no Go or Node installation. On a remote
-RStudio Server machine, run the Linux binary without `-open` and access it
-through the server's port proxy. Posit Workbench needs no flags: the server
-detects the proxy path from each request and allows the browser origin from the
-`RS_SERVER_ADDRESS` environment variable. The startup log prints the proxied
-URL, computed with the same port transform as `rstudioapi::translateLocalUrl`.
-Proxy compatibility has not yet been fully verified.
+the release checksum and need no Go or Node installation.
 
 ## Development requirements
 
