@@ -272,14 +272,12 @@ func (s *Server) serveAsset(w http.ResponseWriter, r *http.Request, name string)
 }
 
 func (s *Server) serveCapabilities(w http.ResponseWriter) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "no-store")
 	terminal := s.projectRoot != "" && terminalSupported()
 	if terminal {
 		_, _, err := terminalShell()
 		terminal = err == nil
 	}
-	_ = json.NewEncoder(w).Encode(map[string]any{
+	writeJSONNoStore(w, map[string]any{
 		"server":   true,
 		"basePath": s.config.BasePath,
 		"capabilities": map[string]bool{
@@ -291,6 +289,12 @@ func (s *Server) serveCapabilities(w http.ResponseWriter) {
 			"wasmRun":   false,
 		},
 	})
+}
+
+func writeJSONNoStore(w http.ResponseWriter, value any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	_ = json.NewEncoder(w).Encode(value)
 }
 
 type fileInfo struct {
@@ -313,11 +317,15 @@ func (s *Server) projectPath(requestPath string) (string, error) {
 		return "", errors.New("absolute project paths are not allowed")
 	}
 	full := filepath.Join(s.projectRoot, filepath.FromSlash(requestPath))
-	relative, err := filepath.Rel(s.projectRoot, full)
-	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+	if !pathWithin(s.projectRoot, full) {
 		return "", errors.New("path escapes project root")
 	}
 	return full, nil
+}
+
+func pathWithin(root, path string) bool {
+	relative, err := filepath.Rel(root, path)
+	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }
 
 func hashBytes(data []byte) string {
@@ -471,8 +479,7 @@ func (s *Server) serveFile(w http.ResponseWriter, r *http.Request) {
 		parent := filepath.Dir(full)
 		resolvedParent, err := filepath.EvalSymlinks(parent)
 		if err == nil {
-			relative, relErr := filepath.Rel(s.projectRoot, resolvedParent)
-			if relErr != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			if !pathWithin(s.projectRoot, resolvedParent) {
 				http.Error(w, "path escapes project root", http.StatusBadRequest)
 				return
 			}

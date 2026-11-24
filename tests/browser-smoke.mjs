@@ -386,6 +386,8 @@ try {
     throw new Error("A failed stage did not restore the partially staged checkbox");
   await gitPage.getByRole("checkbox", { name: "Stage file-0000.txt", exact: true }).check();
   await gitPage.getByRole("checkbox", { name: "Unstage file-0000.txt", exact: true }).waitFor();
+  if (!await gitPage.getByRole("button", { name: "Commit", exact: true }).isEnabled())
+    throw new Error("Commit remained disabled after staging");
   await gitPage.getByRole("link", { name: "M file-0000.txt", exact: true }).click();
   await gitPage.getByText("diff for file-0000.txt", { exact: true }).waitFor();
   const shortSizing = await gitPage.getByText("diff for file-0000.txt", { exact: true }).evaluate((node) => {

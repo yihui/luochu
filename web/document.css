@@ -54,10 +54,6 @@ div.dj-raw-html { display: flow-root; white-space: normal; }
 .dj-check { margin: 0 0.5em 0 0; }
 .dj-image img { max-height: 7.5em; vertical-align: middle; }
 .dj-hr-widget { display: inline-block; width: 100%; vertical-align: middle; border-top: 2px solid var(--muted); }
-.dj-table-widget {
-  table { border-collapse: collapse; }
-  td, th { border: 1px solid var(--muted); padding: 0.1875em 0.5em; }
-}
 .dj-al-left { text-align: left; }
 .dj-al-center { text-align: center; }
 .dj-al-right { text-align: right; }

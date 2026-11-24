@@ -1,5 +1,5 @@
 @import "./document.css";
-:root { --bg: #fff; }
+:root { --bg: #fff; --border: #cfcfcf; }
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
 body {
@@ -7,7 +7,7 @@ body {
   background: var(--bg);
   header {
     display: flex; align-items: center; gap: 0.625em;
-    padding: 0.25em 0.625em; border-bottom: 1px solid #cfcfcf;
+    padding: 0.25em 0.625em; border-bottom: 1px solid var(--border);
   }
   main {
     display: grid; grid-template-columns: 13.75em 1fr 1fr;
@@ -24,9 +24,9 @@ body {
 }
 #sidebar {
   grid-row: 1 / 4; min-height: 0; display: flex; flex-direction: column;
-  border-right: 1px solid #cfcfcf;
+  border-right: 1px solid var(--border);
   nav {
-    display: flex; border-bottom: 1px solid #cfcfcf;
+    display: flex; border-bottom: 1px solid var(--border);
     button { flex: 1; padding: 0.4em; }
   }
 }
@@ -53,19 +53,19 @@ body {
 }
 #file-tabs {
   grid-column: 2 / -1; display: flex; overflow-x: auto; min-height: 0;
-  &:not(:empty) { border-bottom: 1px solid #cfcfcf; }
-  .file-tab { display: flex; flex: none; border-right: 1px solid #cfcfcf; }
+  &:not(:empty) { border-bottom: 1px solid var(--border); }
+  .file-tab { display: flex; flex: none; border-right: 1px solid var(--border); }
   .file-tab.active { background: rgba(127, 127, 127, 0.15); }
   button { border: 0; background: transparent; color: inherit; font: inherit;
     cursor: pointer; padding: 0.3em 0.5em; }
   button:hover { background: rgba(127, 127, 127, 0.12); }
 }
 #editor, #preview-pane { min-height: 0; overflow: auto; }
-#preview-pane { width: 100%; height: 100%; border: 0; border-left: 1px solid #cfcfcf; }
+#preview-pane { width: 100%; height: 100%; border: 0; border-left: 1px solid var(--border); }
 #preview-pane[hidden], #mode-toggle[hidden] { display: none; }
 #file-status { grid-column: 2 / -1; grid-row: 3; }
 #file-status:empty { display: none; }
-#file-status:not(:empty) { padding: 0.3em 0.6em; border-top: 1px solid #cfcfcf; }
+#file-status:not(:empty) { padding: 0.3em 0.6em; border-top: 1px solid var(--border); }
 #terminal-controls[hidden], #terminal-pane[hidden] { display: none; }
 #git-pane {
   flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0.375em;
@@ -87,19 +87,10 @@ body {
     }
     button { white-space: nowrap; }
   }
-  .git-log {
-    margin-bottom: 0.4em;
-    summary { cursor: pointer; }
-  }
-  .git-log-list { max-height: 10em; overflow: auto; border-top: 1px solid #cfcfcf; }
-  .git-log-entry { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.25em;
-    padding: 0.25em 0; border-bottom: 1px solid #cfcfcf; overflow-wrap: anywhere;
-    small { grid-column: 1 / -1; color: #666; }
-  }
-  .git-cleanup { max-width: 34em; border: 1px solid #cfcfcf; background: var(--bg); color: inherit;
+  .git-cleanup { max-width: 34em; border: 1px solid var(--border); background: var(--bg); color: inherit;
     > select { margin-bottom: 0.5em; }
     > div { display: flex; flex-direction: column; gap: 0.25em; margin: 0.5em 0;
-      &:not(:first-of-type) { border-top: 1px solid #cfcfcf; padding-top: 0.5em; }
+      &:not(:first-of-type) { border-top: 1px solid var(--border); padding-top: 0.5em; }
       label { overflow-wrap: anywhere; }
     }
   }
@@ -122,17 +113,19 @@ body {
     input { margin: 0; flex: none; cursor: pointer; }
   }
 }
-#git-diff {
+.content-panel {
   grid-column: 2 / -1; grid-row: 2; min-width: 0; min-height: 0;
   display: flex; flex-direction: column;
   &[hidden] { display: none; }
+}
+#git-diff {
   > .git-diff-header { display: flex; justify-content: space-between; gap: 1em; padding: 0.4em; }
   #git-diff-content {
     flex: 1; min-height: 0; overflow: auto;
     &::after { content: ""; display: block; height: calc(100% - 3em); }
   }
   .git-diff-file {
-    min-height: 4em; border-top: 1px solid #cfcfcf;
+    min-height: 4em; border-top: 1px solid var(--border);
     &:not([open]) { min-height: 0; }
     summary { position: sticky; top: 0; z-index: 1; padding: 0.5em;
       background: var(--bg); cursor: pointer; overflow-wrap: anywhere; }
@@ -157,23 +150,20 @@ body {
   }
 }
 #git-history {
-    grid-column: 2 / -1; grid-row: 2; min-width: 0; min-height: 0;
-    display: flex; flex-direction: column;
-    &[hidden] { display: none; }
-    .git-history-header { padding: 0.4em; border-bottom: 1px solid #cfcfcf; }
-    .git-history-content { flex: 1; min-height: 0; display: grid;
-      grid-template-columns: 13.75em minmax(0, 1fr); }
-    #git-history-list { overflow: auto; border-right: 1px solid #cfcfcf; background: var(--code-bg); }
-    .git-history-entry { display: block; width: 100%; border: 0; border-bottom: 1px solid #cfcfcf;
-      background: transparent; color: inherit; text-align: left; padding: 0.35em;
-      overflow-wrap: anywhere; cursor: pointer;
-    }
-    #git-history-diff { margin: 0; padding: 0.6em; overflow: auto; white-space: pre-wrap; background: transparent;
-      font: 0.875em/1.5 ui-monospace, monospace; }
+  .git-history-header { padding: 0.4em; border-bottom: 1px solid var(--border); }
+  .git-history-content { flex: 1; min-height: 0; display: grid;
+    grid-template-columns: 13.75em minmax(0, 1fr); }
+  #git-history-list { overflow: auto; border-right: 1px solid var(--border); background: var(--code-bg); }
+  .git-history-entry { display: block; width: 100%; border: 0; border-bottom: 1px solid var(--border);
+    background: transparent; color: inherit; text-align: left; padding: 0.35em;
+    overflow-wrap: anywhere; cursor: pointer;
+  }
+  #git-history-diff { margin: 0; padding: 0.6em; overflow: auto; white-space: pre-wrap; background: transparent;
+    font: 0.875em/1.5 ui-monospace, monospace; }
 }
 #terminal-pane {
   grid-column: 2 / -1; grid-row: 4; min-height: 0; display: flex; flex-direction: column;
-  border-top: 1px solid #cfcfcf;
+  border-top: 1px solid var(--border);
   #terminal-status { padding: 0 0.5em; font-size: 0.8em; }
   #terminal { flex: 1; min-height: 0; }
 }
@@ -207,7 +197,7 @@ body {
   }
   #sidebar { grid-row: 1 / 5; }
   #git-diff { grid-row: 2 / 4; }
-  #preview-pane { border-left: 0; border-top: 1px solid #cfcfcf; }
+  #preview-pane { border-left: 0; border-top: 1px solid var(--border); }
   #file-status { grid-row: 4; }
   #terminal-pane { grid-row: 5; }
 }

@@ -74,8 +74,7 @@ func (s *Server) gitDirectory(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	relative, err := filepath.Rel(s.projectRoot, full)
-	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+	if !pathWithin(s.projectRoot, full) {
 		return "", errors.New("path escapes project root")
 	}
 	info, err := os.Stat(full)
@@ -117,31 +116,25 @@ func gitStatus(root string) ([]gitChange, error) {
 }
 
 func gitBranches(root string) ([]string, error) {
-	out, err := gitCommand(root, "for-each-ref", "--format=%(refname:short)", "refs/heads")
-	if err != nil {
-		return nil, err
-	}
-	branches := make([]string, 0)
-	for _, name := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		if name != "" {
-			branches = append(branches, name)
-		}
-	}
-	return branches, nil
+	return gitLines(root, "for-each-ref", "--format=%(refname:short)", "refs/heads")
 }
 
 func gitRemotes(root string) ([]string, error) {
-	out, err := gitCommand(root, "remote")
+	return gitLines(root, "remote")
+}
+
+func gitLines(root string, args ...string) ([]string, error) {
+	out, err := gitCommand(root, args...)
 	if err != nil {
 		return nil, err
 	}
-	remotes := make([]string, 0)
+	lines := make([]string, 0)
 	for _, name := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 		if name != "" {
-			remotes = append(remotes, name)
+			lines = append(lines, name)
 		}
 	}
-	return remotes, nil
+	return lines, nil
 }
 
 func gitLog(root string) ([]gitLogEntry, error) {
@@ -352,9 +345,7 @@ func (s *Server) serveGit(w http.ResponseWriter, r *http.Request) {
 				changes[i].ProjectPath = filepath.ToSlash(path)
 			}
 		}
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Cache-Control", "no-store")
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		writeJSONNoStore(w, map[string]any{
 			"root": root, "relativeRoot": filepath.ToSlash(relative),
 			"branch": strings.TrimSpace(string(branch)), "branches": branches, "remotes": remotes,
 			"upstream": upstream, "ahead": ahead, "behind": behind, "log": logEntries,
@@ -436,9 +427,7 @@ func (s *Server) serveGit(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, err.Error(), http.StatusConflict)
 				return
 			}
-			w.Header().Set("Content-Type", "application/json")
-			w.Header().Set("Cache-Control", "no-store")
-			_ = json.NewEncoder(w).Encode(data)
+			writeJSONNoStore(w, data)
 			return
 		case "cleanup":
 			for _, wt := range worktreePaths {
@@ -527,9 +516,7 @@ func (s *Server) serveGit(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, err.Error(), http.StatusConflict)
 				return
 			}
-			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-			w.Header().Set("Cache-Control", "no-store")
-			_, _ = w.Write(out)
+			writeGitText(w, out)
 			return
 		}
 	}
@@ -584,6 +571,10 @@ func (s *Server) serveGit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	writeGitText(w, out)
+}
+
+func writeGitText(w http.ResponseWriter, out []byte) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	_, _ = w.Write(out)

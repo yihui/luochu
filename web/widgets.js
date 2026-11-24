@@ -1,6 +1,7 @@
 import { WidgetType } from "@codemirror/view";
 import { imageURL } from "./urls.js";
 import { sanitizeHTML } from "./safe-html.js";
+import { loadStylesheet } from "./assets.js";
 
 class Widget extends WidgetType {
   constructor(key, make) { super(); this.key = key; this.make = make; }
@@ -112,15 +113,8 @@ let mathModule;
 const mathStyles = new WeakMap();
 function loadMath(doc = document) {
   if (!mathStyles.has(doc)) {
-    const link = doc.createElement("link");
-    link.rel = "stylesheet";
-    link.href = new URL("assets/math.css", document.baseURI).href;
-    const stylesheet = new Promise((resolve, reject) => {
-      link.onload = resolve;
-      link.onerror = () => reject(new Error("Could not load math stylesheet"));
-    });
-    doc.head.append(link);
-    mathStyles.set(doc, stylesheet);
+    const { ready } = loadStylesheet(doc, new URL("assets/math.css", document.baseURI).href, "math");
+    mathStyles.set(doc, ready);
   }
   if (!mathModule) mathModule = import("./math.js");
   return Promise.all([mathModule, mathStyles.get(doc)]).then(([module]) => module);

@@ -16,29 +16,19 @@ const SKIP = new Set(["para", "list", "section"]),
   nameOf = (annot) => annot.slice(1).split("|")[0],
   subOf = (annot) => annot.split("|")[1];
 
-function collectTagNames(ast, predicate) {
-  const names = new Set();
-  function visit(node) {
-    if (!node || typeof node !== "object") return;
-    if (typeof node.tag === "string" && predicate(node)) names.add(node.tag);
-    for (const value of Object.values(node)) {
-      if (Array.isArray(value)) value.forEach(visit);
-      else if (value && typeof value === "object") visit(value);
-    }
-  }
-  visit(ast);
-  return names;
-}
-
 export function tokenize(text) {
   const ast = parse(text, { sourcePositions: true }),
-    inlineNames = collectTagNames(ast, isInline),
-    blockNames = collectTagNames(ast, isBlock),
+    inlineNames = new Set(), blockNames = new Set(),
     out = [], stack = [], pairs = [], footnoteNumbers = new Map(), tables = new Map(), blocks = [];
 
   function collectNodes(node) {
     if (!node || typeof node !== "object") return;
-    if (node.pos && isBlock(node)) blocks.push(node);
+    const block = isBlock(node);
+    if (typeof node.tag === "string") {
+      if (isInline(node)) inlineNames.add(node.tag);
+      if (block) blockNames.add(node.tag);
+    }
+    if (node.pos && block) blocks.push(node);
     if (node.tag === "table") tables.set(node.pos.start.offset, node);
     if (node.tag === "term") {
       const children = (node.children || []).filter((child) => child.pos);

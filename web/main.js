@@ -8,6 +8,7 @@ import {bullet, checkbox, image, footnote, footnoteLabel, math, table, rawHTML, 
   from './widgets.js'
 import {imageURL} from './urls.js'
 import {sanitizeHTML} from './safe-html.js'
+import {loadStylesheet} from './assets.js'
 import demo from './demo.dj'
 
 let currentPath = null, activeTab = null, openSequence = 0;
@@ -492,15 +493,8 @@ terminalToggle.onclick = async () => {
   terminalStatus.textContent = 'Loading terminal…';
   try {
     if (!terminalAssets) {
-      const link = document.createElement('link');
-      link.rel = 'stylesheet';
-      link.href = apiUrl('assets/terminal.css');
-      const stylesheet = new Promise((resolve, reject) => {
-        link.onload = resolve;
-        link.onerror = () => reject(new Error('Could not load terminal stylesheet'));
-      });
-      document.head.append(link);
-      terminalAssets = Promise.all([import('./terminal.js'), stylesheet]).then(([module]) => module)
+      const {link, ready} = loadStylesheet(document, apiUrl('assets/terminal.css'), 'terminal');
+      terminalAssets = Promise.all([import('./terminal.js'), ready]).then(([module]) => module)
         .catch((error) => { link.remove(); terminalAssets = null; throw error; });
     }
     const module = await terminalAssets;

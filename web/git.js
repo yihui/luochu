@@ -94,6 +94,22 @@ export function createGitPane(pane, apiUrl, initialDirectory, openFile, openGitT
     if (!response.ok) throw new Error(text.trim() || `Request failed: ${response.status}`);
     return text;
   }
+  async function postGit(target, body) {
+    return responseText(await fetch(target, {
+      method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    }));
+  }
+  function updateControls() {
+    const ready = statusKnown && !statusFailed && !busy;
+    commitButton.disabled = !ready || !rows.some((row) => row.staged);
+    commitInput.disabled = !ready;
+    branch.disabled = !ready || !branch.value;
+    pullButton.disabled = pushButton.disabled = !ready || !gitInfo?.branch || !gitInfo?.remotes?.length;
+    cleanupButton.disabled = !ready || !gitInfo?.branch;
+    historyButton.disabled = !ready;
+  }
+  updateControls();
   async function gitAction(body) {
     if (busy) {
       message.textContent = 'Wait for the Git operation to finish.';
@@ -104,25 +120,18 @@ export function createGitPane(pane, apiUrl, initialDirectory, openFile, openGitT
       return;
     }
     busy = true;
+    updateControls();
     sequence++;
     const currentDirectory = directory;
     message.textContent = '';
     try {
-      await responseText(await fetch(url(), {
-        method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(body),
-      }));
+      await postGit(url(), body);
       if (directory === currentDirectory) await refresh();
     } catch (error) {
       if (directory === currentDirectory) message.textContent = `Git operation failed: ${error.message}`;
     } finally {
       busy = false;
-      commitButton.disabled = !rows.some((row) => row.staged);
-      commitInput.disabled = false;
-      pushButton.disabled = !branch.value || !(gitInfo?.remotes?.length);
-      pullButton.disabled = !branch.value || !(gitInfo?.remotes?.length);
-      cleanupButton.disabled = false;
-      historyButton.disabled = false;
+      updateControls();
     }
   }
   commitButton.onclick = () => gitAction({action: 'commit', message: commitInput.value});
@@ -191,11 +200,7 @@ export function createGitPane(pane, apiUrl, initialDirectory, openFile, openGitT
     cleanupRemove.disabled = busy;
     cleanupNote.textContent = 'Scanning branches…';
     try {
-      const response = await fetch(url(), {
-        method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({action: 'cleanup-preview', base: cleanupBase.value}),
-      });
-      const data = JSON.parse(await responseText(response));
+      const data = JSON.parse(await postGit(url(), {action: 'cleanup-preview', base: cleanupBase.value}));
       cleanupNote.textContent = data.fetchNote
         ? `Fetch/prune warning: ${data.fetchNote}`
         : 'Candidates use merged branches, pruned remotes, and GitHub merged/closed PR branches.';
@@ -253,18 +258,17 @@ export function createGitPane(pane, apiUrl, initialDirectory, openFile, openGitT
     if (!local.length && !worktrees.length) return;
     if (!window.confirm(`Delete ${local.length} local branch(es) and remove ${worktrees.length} worktree(s)?`)) return;
     busy = true;
+    updateControls();
     cleanupRemove.disabled = true;
     try {
-      await responseText(await fetch(url(), {
-        method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({action: 'cleanup', base: cleanupBase.value, local, worktrees}),
-      }));
+      await postGit(url(), {action: 'cleanup', base: cleanupBase.value, local, worktrees});
       cleanupDialog.close();
       await refresh();
     } catch (error) {
       cleanupNote.textContent = `Cleanup failed: ${error.message}`;
     } finally {
       busy = false;
+      updateControls();
       cleanupRemove.disabled = false;
     }
   };
@@ -468,24 +472,22 @@ export function createGitPane(pane, apiUrl, initialDirectory, openFile, openGitT
       return;
     }
     busy = true;
+    updateControls();
     sequence++;
     checkbox.setAttribute('aria-busy', 'true');
     const target = url(), currentDirectory = directory, unstage = row.staged && !row.unstaged;
     pendingTarget = null;
     message.textContent = '';
     try {
-      await responseText(await fetch(target, {
-        method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({path: row.path, group: unstage ? 'staged' : 'unstaged',
-          action: unstage ? 'unstage' : 'stage'}),
-      }));
+      await postGit(target, {path: row.path, group: unstage ? 'staged' : 'unstaged',
+        action: unstage ? 'unstage' : 'stage'});
       if (directory === currentDirectory && !await refresh(row.path)) setCheckbox(row, checkbox);
     } catch (error) {
       if (directory === currentDirectory) {
         setCheckbox(row, checkbox);
         message.textContent = `Git operation failed: ${error.message}`;
       }
-    } finally { busy = false; checkbox.removeAttribute('aria-busy'); }
+    } finally { busy = false; updateControls(); checkbox.removeAttribute('aria-busy'); }
   }
   const pageSize = 40, pages = [], visiblePages = new Set(), pageIndex = new WeakMap(),
     rowState = new WeakMap();
@@ -601,17 +603,10 @@ export function createGitPane(pane, apiUrl, initialDirectory, openFile, openGitT
       root.title = data.relativeRoot === '.' ? '' : data.root;
       root.hidden = data.relativeRoot === '.';
       rows = statusRows(data.changes);
-      const staged = rows.some((row) => row.staged);
-      commitButton.disabled = busy || !staged;
-      commitInput.disabled = busy;
-      branch.disabled = busy || !branch.value;
-      pushButton.disabled = busy || !data.branch || !data.remotes?.length;
       pushButton.textContent = data.ahead ? `Push (${data.ahead})` : 'Push';
-      pullButton.disabled = busy || !data.branch || !data.remotes?.length;
-      cleanupButton.disabled = busy || !data.branch;
-      historyButton.disabled = busy;
       statusKnown = true;
       statusFailed = false;
+      updateControls();
       message.textContent = rows.length ? '' : 'No changes';
       renderPages();
       if (!diff.hidden) {
@@ -622,6 +617,7 @@ export function createGitPane(pane, apiUrl, initialDirectory, openFile, openGitT
     } catch (error) {
       if (current === sequence) {
         statusFailed = true;
+        updateControls();
         message.textContent = statusKnown ? `Could not refresh Git status: ${error.message}` : error.message;
       }
       return false;
@@ -644,6 +640,8 @@ export function createGitPane(pane, apiUrl, initialDirectory, openFile, openGitT
       statusKnown = false;
       statusFailed = false;
       rows = [];
+      gitInfo = null;
+      updateControls();
       branch.replaceChildren();
       root.textContent = message.textContent = '';
       pageObserver.disconnect();

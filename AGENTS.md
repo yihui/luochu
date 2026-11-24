@@ -60,9 +60,6 @@ art and current implementation.
 
 ## Prior art
 
-- `../lite-edit/README.md` and branch `origin/prototype/visual-editor`,
-  commit `cabc797`: `src/tokens.js`, `src/main.js`, `src/app.css`,
-  `src/demo.dj`, `test-tokens.mjs`, and `PROTOTYPE.md`.
 - `../lite.js/js/render-katex.js` for equation labels and references.
 - Djot is core functionality, not a separate lite-edit product. Prefer the
   prototype's simple CodeMirror decoration model.
