@@ -1,7 +1,7 @@
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 
-export function openTerminal(element, status) {
+export function openTerminal(element, status, onExit, isActive) {
   const terminal = new Terminal({ cursorBlink: true, scrollback: 5000 }),
     fit = new FitAddon(), encoder = new TextEncoder();
   terminal.loadAddon(fit);
@@ -39,10 +39,10 @@ export function openTerminal(element, status) {
         session = message.id;
         status.textContent = "Connected. Shell commands run with your permissions; agents use their own prompts.";
         resize();
-        terminal.focus();
+        if (isActive()) terminal.focus();
       } else if (message.type === "exit") {
         exited = true;
-        status.textContent = "Terminal process exited.";
+        onExit();
       } else if (message.type === "error") {
         exited = true;
         status.textContent = `Terminal error: ${message.message}`;
@@ -61,6 +61,7 @@ export function openTerminal(element, status) {
   }
   connect();
   return {
+    activate(focus) { resize(); if (focus) terminal.focus(); },
     paste(text) { terminal.paste(text); terminal.focus(); },
     close() {
       stopped = true;

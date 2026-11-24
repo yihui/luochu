@@ -4,8 +4,9 @@
   --code-bg: #f4f4f4;
   --hl: #fff3a3;
   --accent: #2b6cb0;
+  --mono: ui-monospace, monospace;
 }
-body { color: var(--fg); font: 1em/1.6 system-ui, sans-serif; }
+body { color: var(--fg); font: 0.9em/1.6 system-ui, sans-serif; }
 .visual {
   .cm-content { font-family: system-ui, sans-serif; }
   .dj-delim { text-decoration: none; }
@@ -32,7 +33,7 @@ h1, h2, h3, h4, h5, h6 { margin: 0.8em 0 0.35em; }
 .dj-subscript, .dj-superscript { font-size: 0.8em; }
 .dj-subscript { vertical-align: sub; }
 .dj-superscript { vertical-align: super; }
-.dj-verbatim, .dj-code_block { font-family: ui-monospace, monospace; background: var(--code-bg); }
+.dj-verbatim, .dj-code_block { font-family: var(--mono); background: var(--code-bg); }
 .dj-linktext, .dj-url, .dj-note_label, .dj-footnote_reference { color: var(--accent); }
 .dj-footnote { font-size: 0.9em; }
 .dj-footnote-label { color: var(--accent); margin-right: 0.5em; }

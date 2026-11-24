@@ -9,6 +9,7 @@ import {bullet, checkbox, image, footnote, footnoteLabel, math, table, rawHTML, 
 import {imageURL} from './urls.js'
 import {sanitizeHTML} from './safe-html.js'
 import {loadStylesheet} from './assets.js'
+import {createTabset} from './tabset.js'
 import demo from './demo.dj'
 
 let currentPath = null, activeTab = null, openSequence = 0;
@@ -232,6 +233,7 @@ const saveButton = document.querySelector('#save-file')
 const fileTabs = document.querySelector('#file-tabs')
 const fileStatus = document.querySelector('#file-status')
 const apiUrl = (path) => new URL(path, document.baseURI).toString()
+const renderFileTabs = createTabset(fileTabs, (tab) => { openSequence++; activateTab(tab) }, closeTab)
 let gitDirectory = '', gitUI = null, gitAssets = null;
 function selectGitDirectory(directory) {
   gitDirectory = directory;
@@ -240,24 +242,13 @@ function selectGitDirectory(directory) {
 function updateFileUI() {
   saveButton.disabled = !activeTab || !!activeTab.kind || activeTab.saving
   saveButton.textContent = activeTab?.conflict ? 'Conflict' : activeTab?.dirty ? 'Save*' : 'Save'
-  fileTabs.replaceChildren()
-  for (const tab of tabs) {
-    const item = document.createElement('span'), select = document.createElement('button'),
-      close = document.createElement('button')
-    item.className = `file-tab${tab === activeTab ? ' active' : ''}`
-    select.type = close.type = 'button'
-    select.textContent = tab.kind === 'git-diff' ? 'Git diff'
+  renderFileTabs(tabs.map((tab) => ({
+    key: tab,
+    label: tab.kind === 'git-diff' ? 'Git diff'
       : tab.kind === 'git-history' ? 'Git history'
-      : `${tab.path.split('/').pop()}${tab.dirty ? ' *' : ''}`
-    select.title = tab.path || select.textContent
-    select.setAttribute('aria-pressed', String(tab === activeTab))
-    select.onclick = () => { openSequence++; activateTab(tab) }
-    close.textContent = '×'
-    close.setAttribute('aria-label', `Close ${tab.path || select.textContent}`)
-    close.onclick = () => closeTab(tab)
-    item.append(select, close)
-    fileTabs.append(item)
-  }
+      : `${tab.path.split('/').pop()}${tab.dirty ? ' *' : ''}`,
+    title: tab.path,
+  })), activeTab)
 }
 function activateTab(tab) {
   const previous = activeTab
@@ -271,12 +262,13 @@ function activateTab(tab) {
   if (!gitTab && (tab || !previous?.kind))
     selectGitDirectory(tab ? tab.path.split('/').slice(0, -1).join('/') : '')
   const gitDiff = document.querySelector('#git-diff'), gitHistory = document.querySelector('#git-history')
-  document.querySelector('main').classList.toggle('show-git-content', !!gitTab)
+  document.querySelector('#editor').hidden = !!gitTab
   if (gitTab) {
     if (tab.kind !== 'git-diff') gitUI?.closeDiff()
     gitHistory.hidden = tab.kind !== 'git-history'
     document.querySelector('main').classList.toggle('plain-file', true)
     toggle.hidden = true
+    previewPane.hidden = true
     if (tab.kind === 'git-diff') gitUI?.showDiff(tab.selected)
     else gitUI?.showHistory()
   } else {
@@ -436,31 +428,33 @@ const terminalControls = document.querySelector('#terminal-controls'),
   terminalToggle = document.querySelector('#terminal-toggle'),
   terminalPaste = document.querySelector('#terminal-paste'),
   terminalPane = document.querySelector('#terminal-pane'),
-  terminalStatus = document.querySelector('#terminal-status');
-let terminalSession = null, terminalAssets = null;
+  terminalStatus = document.querySelector('#terminal-status'),
+  terminalContainer = document.querySelector('#terminal'),
+  terminalAdd = document.querySelector('#terminal-add');
+let terminalAssets = null, terminalModule = null, activeTerminal = null, terminalNumber = 0;
+const terminals = [];
 fetch(apiUrl('api/capabilities'), {credentials: 'same-origin'}).then((response) => {
   if (!response.ok) throw new Error(`Capability request failed: ${response.status}`);
   return response.json();
 }).then(({capabilities}) => {
   if (capabilities.terminal) terminalControls.hidden = false;
   if (capabilities.git) {
-    document.querySelector('#git-toggle').hidden = false;
+    sidebarTabs.push({key: 'git', label: 'Git', id: 'git-toggle'});
+    renderSidebar(sidebarTabs, sidebarActive);
   }
 }).catch((error) => console.error('Could not load capabilities:', error));
 
-const gitToggle = document.querySelector('#git-toggle'), filesToggle = document.querySelector('#files-toggle'),
-  gitPane = document.querySelector('#git-pane');
-filesToggle.onclick = () => {
-  fileTree.hidden = false;
-  gitPane.hidden = true;
-  filesToggle.setAttribute('aria-pressed', 'true');
-  gitToggle.setAttribute('aria-pressed', 'false');
-};
-gitToggle.onclick = async () => {
-  fileTree.hidden = true;
-  gitPane.hidden = false;
-  filesToggle.setAttribute('aria-pressed', 'false');
-  gitToggle.setAttribute('aria-pressed', 'true');
+const gitPane = document.querySelector('#git-pane'),
+  sidebarTabs = [{key: 'files', label: 'Files', id: 'files-toggle'}];
+let sidebarActive = 'files';
+const renderSidebar = createTabset(document.querySelector('#sidebar-tabs'), selectSidebar);
+renderSidebar(sidebarTabs, sidebarActive);
+async function selectSidebar(key) {
+  sidebarActive = key;
+  renderSidebar(sidebarTabs, key);
+  fileTree.hidden = key !== 'files';
+  gitPane.hidden = key !== 'git';
+  if (key !== 'git') return;
   if (gitUI) { gitUI.refresh(); return; }
   gitPane.textContent = 'Loading Git…';
   try {
@@ -471,12 +465,52 @@ gitToggle.onclick = async () => {
   } catch (error) {
     gitPane.textContent = `Could not load Git: ${error.message}`;
   }
-};
+}
+
+const renderTerminals = createTabset(document.querySelector('#terminal-tabs'), selectTerminal, closeTerminal);
+function selectTerminal(tab, focus = true) {
+  activeTerminal = tab;
+  for (const item of terminals) item.element.hidden = item !== tab;
+  renderTerminals(terminals.map((item) => ({key: item, label: item.label})), tab);
+  terminalStatus.textContent = tab?.status || '';
+  terminalPaste.disabled = !tab;
+  tab?.session?.activate(focus);
+}
+function closeTerminal(tab) {
+  const index = terminals.indexOf(tab);
+  if (index < 0) return;
+  const focus = terminalPane.contains(document.activeElement);
+  terminals.splice(index, 1);
+  tab.session.close();
+  tab.element.remove();
+  if (!terminals.length) {
+    selectTerminal(null);
+    terminalPane.hidden = true;
+    document.querySelector('main').classList.remove('terminal-open');
+    terminalToggle.textContent = 'Open terminal';
+  } else if (tab === activeTerminal) selectTerminal(terminals[Math.min(index, terminals.length - 1)], focus);
+  else renderTerminals(terminals.map((item) => ({key: item, label: item.label})), activeTerminal);
+}
+function addTerminal() {
+  const tab = {label: `Terminal ${++terminalNumber}`, element: document.createElement('div'), status: ''};
+  tab.element.className = 'terminal-instance';
+  terminalContainer.append(tab.element);
+  terminals.push(tab);
+  selectTerminal(tab);
+  const status = {
+    set textContent(value) {
+      tab.status = value;
+      if (tab === activeTerminal) terminalStatus.textContent = value;
+    },
+  };
+  tab.session = terminalModule.openTerminal(tab.element, status, () => closeTerminal(tab),
+    () => tab === activeTerminal);
+}
+terminalAdd.onclick = addTerminal;
 
 terminalToggle.onclick = async () => {
   if (!terminalPane.hidden) {
-    terminalSession?.close();
-    terminalSession = null;
+    for (const tab of [...terminals]) closeTerminal(tab);
     terminalPane.hidden = true;
     document.querySelector('main').classList.remove('terminal-open');
     terminalPaste.disabled = true;
@@ -493,9 +527,9 @@ terminalToggle.onclick = async () => {
       terminalAssets = Promise.all([import('./terminal.js'), ready]).then(([module]) => module)
         .catch((error) => { link.remove(); terminalAssets = null; throw error; });
     }
-    const module = await terminalAssets;
-    terminalSession = module.openTerminal(document.querySelector('#terminal'), terminalStatus);
-    terminalPaste.disabled = false;
+    terminalModule = await terminalAssets;
+    terminalAdd.disabled = false;
+    addTerminal();
     terminalToggle.textContent = 'Close';
   } catch (error) {
     terminalStatus.textContent = `Could not open terminal: ${error.message}`;
@@ -510,5 +544,5 @@ terminalPaste.onclick = () => {
   if (!text) { terminalStatus.textContent = 'Select text in the editor first.'; return; }
   if (text.includes('\n') &&
     !window.confirm('Pasting multiple lines may run commands immediately. Continue?')) return;
-  terminalSession?.paste(text);
+  activeTerminal?.session.paste(text);
 };

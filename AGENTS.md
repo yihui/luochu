@@ -36,6 +36,8 @@ art and current implementation.
 - Keep changes small, work one issue at a time, and run the narrowest relevant
   tests. Record decisions and remaining work here and in the PR, not as
   progress comments on issues. Remove completed handoffs from this file.
+- Test real behavior and regressions, not implementation details or fabricated
+  UI elements. Avoid brittle tests that prescribe incidental styling.
 - Keep the implementation simple. Earlier custom iframe messaging, incremental
   patching, and scroll feedback logic made the editor harder to debug. Do not
   reintroduce them without a measured need. Share document CSS rather than
@@ -80,9 +82,9 @@ art and current implementation.
 - Ship one Go server binary with embedded UI. Generated assets, source maps,
   caches, and release archives are not committed. Keep the initial JS under
   roughly 200 KB compressed and lazy-load expensive functionality.
-- Current initial app JS: 134,207 bytes gzip and CSS: 2,331 bytes gzip; lazy
-  Git: 3,810 bytes JS. Lazy terminal: 72,531 bytes JS
-  and 1,733 bytes CSS gzip. Lazy KaTeX: 77,403 bytes JS and 4,168 bytes CSS
+- Current initial app JS: 135,051 bytes gzip and CSS: 2,694 bytes gzip; lazy
+  Git: 5,293 bytes JS. Lazy terminal: 72,532 bytes JS
+  and 1,725 bytes CSS gzip. Lazy KaTeX: 77,403 bytes JS and 4,168 bytes CSS
   gzip, plus fonts; the demo loads math at startup. Cold/warm timings remain
   unmeasured; see #22.
 - Terminal commands run with user rights. Use Claude and Copilot's normal

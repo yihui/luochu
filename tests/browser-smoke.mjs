@@ -57,6 +57,14 @@ try {
   if (mathRequests.length) throw new Error("KaTeX loaded for a document without math");
   if (await noMathPage.locator("#terminal-controls").isVisible())
     throw new Error("Terminal controls are visible when the capability is absent");
+  const headerLayout = await noMathPage.evaluate(() => {
+    const header = document.querySelector("header");
+    return { header: header.getBoundingClientRect().bottom,
+      title: header.querySelector("strong").getBoundingClientRect().bottom,
+      sidebar: document.querySelector("#sidebar").getBoundingClientRect().top };
+  });
+  if (headerLayout.header > headerLayout.sidebar + 1 || headerLayout.title > headerLayout.sidebar + 1)
+    throw new Error(`Header overlaps the sidebar: ${JSON.stringify(headerLayout)}`);
   await noMathPage.evaluate(() => {
     const view = window.__LUOCHU_EDITOR_VIEW__;
     view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: "First edit." } });
@@ -89,6 +97,8 @@ try {
         { name: "late.bin", path: "late.bin", type: "file" },
         { name: "boundary.txt", path: "boundary.txt", type: "file" },
         { name: ".hidden", path: ".hidden", type: "file" },
+        ...Array.from({ length: 120 }, (_, i) =>
+          ({ name: `extra-${i}.txt`, path: `extra-${i}.txt`, type: "file" })),
       ],
       src: [
         { name: "nested", path: "src/nested", type: "directory" },
@@ -124,16 +134,21 @@ try {
   const tree = treePage.locator("#file-tree"), srcFolder = tree.locator("details").filter({
     has: treePage.getByText("src", { exact: true }),
   });
+  await tree.getByText("src", { exact: true }).waitFor();
+  const sidebarLayout = await treePage.evaluate(() => {
+    const files = document.querySelector("#files-toggle"), tab = files.getBoundingClientRect(),
+      nav = files.closest("nav"), bar = nav.getBoundingClientRect(), tree = document.querySelector("#file-tree");
+    return { tabTop: tab.top, tabBottom: tab.bottom, barTop: bar.top, barBottom: bar.bottom,
+      barHeight: nav.clientHeight, barContent: nav.scrollHeight,
+      treeHeight: tree.clientHeight, treeContent: tree.scrollHeight };
+  });
+  if (sidebarLayout.treeContent <= sidebarLayout.treeHeight ||
+      sidebarLayout.tabTop < sidebarLayout.barTop || sidebarLayout.tabBottom > sidebarLayout.barBottom ||
+      sidebarLayout.barContent > sidebarLayout.barHeight)
+    throw new Error(`Files tab is clipped or overflows with a long file tree: ${JSON.stringify(sidebarLayout)}`);
   await tree.getByText("src", { exact: true }).click();
   await tree.getByText("nested", { exact: true }).click();
   await tree.getByText("deep.txt", { exact: true }).waitFor();
-  const treeStyles = await tree.evaluate((element) => {
-    const nodes = [element.querySelector("summary"), ...element.querySelectorAll(".file-tree-children summary"),
-      ...element.querySelectorAll("button")];
-    return nodes.map((node) => getComputedStyle(node).font);
-  });
-  if (treeStyles.some((font) => font !== treeStyles[0]))
-    throw new Error(`Tree nodes lack consistent fonts: ${JSON.stringify(treeStyles)}`);
   if (!await tree.getByText("root.txt", { exact: true }).isVisible() ||
       await tree.getByText(".hidden", { exact: true }).count())
     throw new Error("Expanding a directory changed the root listing");
@@ -180,8 +195,20 @@ try {
     throw new Error("Editing a file did not mark it dirty");
   await tree.getByText("deep.txt", { exact: true }).click();
   await treePage.waitForFunction(() => document.title === "Luochu - src/nested/deep.txt");
-  if (dialogs || await treePage.locator("#file-tabs .file-tab").count() !== 2)
+  if (dialogs || await treePage.locator("#file-tabs .tab").count() !== 2)
     throw new Error("Switching tabs prompted or duplicated an open file");
+  const deepTab = treePage.locator("#file-tabs .tab").filter({ hasText: "deep.txt" }),
+    deepClose = deepTab.getByRole("button", { name: "Close src/nested/deep.txt" });
+  await treePage.mouse.move(0, 0);
+  if (await deepClose.evaluate((button) => getComputedStyle(button).opacity) !== "0")
+    throw new Error("Tab close button was visible without hover or focus");
+  await deepTab.hover();
+  if (await deepClose.evaluate((button) => getComputedStyle(button).opacity) !== "1")
+    throw new Error("Tab close button did not appear on hover");
+  await treePage.mouse.move(0, 0);
+  await deepClose.focus();
+  if (await deepClose.evaluate((button) => getComputedStyle(button).opacity) !== "1")
+    throw new Error("Tab close button did not appear on focus");
   await tree.getByText("root.txt", { exact: true }).click();
   await treePage.waitForFunction(() => document.title === "Luochu - root.txt");
   if (!await treePage.evaluate(() => window.__LUOCHU_EDITOR_VIEW__.state.doc.toString().endsWith(" edited")) ||
@@ -238,7 +265,7 @@ try {
         fileReads.filter((read) => read.path === path).length !== 1))
     throw new Error("Editor did not use a single server-validated text read");
   if (await treePage.title() !== "Luochu - root.txt" ||
-      await treePage.locator("#file-tabs .file-tab").count() !== 2)
+      await treePage.locator("#file-tabs .tab").count() !== 2)
     throw new Error("Opening binary data changed the active tab");
   await tree.getByText("boundary.txt", { exact: true }).click();
   await treePage.waitForFunction(() => document.title === "Luochu - boundary.txt");
@@ -261,10 +288,14 @@ try {
   const layout = await treePage.evaluate(() => {
     const tabs = document.querySelector("#file-tabs").getBoundingClientRect(),
       editor = document.querySelector("#editor").getBoundingClientRect(),
-      preview = document.querySelector("#preview-pane").getBoundingClientRect();
-    return { tabs: tabs.bottom, editorTop: editor.top, editorBottom: editor.bottom, previewTop: preview.top };
+      preview = document.querySelector("#preview-pane").getBoundingClientRect(),
+      sidebar = document.querySelector("#sidebar").getBoundingClientRect(),
+      main = document.querySelector("main").getBoundingClientRect();
+    return { tabs: tabs.bottom, editorTop: editor.top, editorBottom: editor.bottom, previewTop: preview.top,
+      sidebarBottom: sidebar.bottom, mainBottom: main.bottom };
   });
-  if (layout.tabs > layout.editorTop || layout.editorBottom > layout.previewTop)
+  if (layout.tabs > layout.editorTop || layout.editorBottom > layout.previewTop ||
+      Math.abs(layout.sidebarBottom - layout.mainBottom) > 1)
     throw new Error(`Mobile tabs, editor, and preview overlap: ${JSON.stringify(layout)}`);
   await treePage.close();
 
@@ -353,7 +384,10 @@ try {
     const view = window.__LUOCHU_EDITOR_VIEW__;
     view.dispatch({ changes: { from: view.state.doc.length, insert: " unsaved" } });
   });
-  await gitPage.locator("#git-toggle").click();
+  await gitPage.locator("#files-toggle").focus();
+  await gitPage.keyboard.press("ArrowRight");
+  if (await gitPage.locator("#git-toggle").getAttribute("aria-pressed") !== "true")
+    throw new Error("Sidebar tab keyboard navigation failed");
   await gitPage.getByRole("link", { name: "M file-0002.txt", exact: true }).waitFor();
   const displayedRoot = gitPage.locator("#git-pane .git-root");
   if (await displayedRoot.textContent() !== "one" || await displayedRoot.getAttribute("title") !== "/repos/one")
@@ -369,10 +403,6 @@ try {
       !await partialCheckbox.evaluate((node) => node.indeterminate) ||
       await gitPage.locator("#git-pane").getByText(/^(Staged|Unstaged) \(\d+\)$/).count())
     throw new Error("Partially staged file is duplicated, not mixed, or still grouped");
-  const badge = gitPage.getByRole("link", { name: "M file-0002.txt", exact: true }).locator(".git-status");
-  if (await badge.textContent() !== "M" ||
-      await badge.evaluate((node) => getComputedStyle(node).fontWeight) < 600)
-    throw new Error("Git status character is not visually distinct");
   rejectNextStage = true;
   await gitPage.getByRole("checkbox", { name: "Stage file-0002.txt", exact: true }).click();
   await gitPage.getByText("Git operation failed: index locked", { exact: true }).waitFor();
@@ -1405,13 +1435,78 @@ try {
   await page.locator("#terminal-paste").click();
   if (!confirmed || (await page.locator(".xterm-rows").textContent()).includes("blocked-command"))
     throw new Error("Multiline paste was not guarded by confirmation");
+  const terminalTabs = page.locator("#terminal-tabs");
+  await page.locator("#terminal-add").click();
+  await page.waitForFunction(() => document.querySelectorAll("#terminal .terminal-instance").length === 2 &&
+    document.querySelector("#terminal-status").textContent.startsWith("Connected."));
+  await page.setViewportSize({ width: 650, height: 750 });
+  const terminalLayout = await page.evaluate(() => {
+    const preview = document.querySelector("#preview-pane").getBoundingClientRect(),
+      terminal = document.querySelector("#terminal-pane").getBoundingClientRect(),
+      sidebar = document.querySelector("#sidebar").getBoundingClientRect(),
+      main = document.querySelector("main").getBoundingClientRect();
+    return { previewBottom: preview.bottom, terminalTop: terminal.top,
+      sidebarBottom: sidebar.bottom, mainBottom: main.bottom };
+  });
+  if (terminalLayout.previewBottom > terminalLayout.terminalTop ||
+      Math.abs(terminalLayout.sidebarBottom - terminalLayout.mainBottom) > 1)
+    throw new Error(`Mobile terminal layout is incorrect: ${JSON.stringify(terminalLayout)}`);
+  await page.setViewportSize({ width: 1100, height: 750 });
+  await page.evaluate(() => {
+    const view = window.__LUOCHU_EDITOR_VIEW__, text = "printf 'second-paste-ready\\n'";
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text },
+      selection: { anchor: 0, head: text.length } });
+  });
+  await page.locator("#terminal-paste").click();
+  await page.keyboard.press("Enter");
+  await page.waitForFunction(() =>
+    document.querySelector(".terminal-instance:not([hidden]) .xterm-rows").textContent.includes("second-paste-ready"));
+  await page.keyboard.type("printf 'second-terminal-%s\\n' \"${LUOCHU_RECONNECT:-independent}\"");
+  await page.keyboard.press("Enter");
+  await page.waitForFunction(() =>
+    document.querySelector(".terminal-instance:not([hidden]) .xterm-rows").textContent.includes("second-terminal-independent"));
+  await terminalTabs.getByRole("button", { name: "Terminal 1", exact: true }).click();
+  if (!(await page.locator(".terminal-instance:not([hidden]) .xterm-rows").textContent()).includes("after-reconnect-preserved"))
+    throw new Error("Switching terminals lost the first session");
+  await terminalTabs.getByRole("button", { name: "Terminal 1", exact: true }).focus();
+  await page.keyboard.press("ArrowRight");
+  if (await terminalTabs.getByRole("button", { name: "Terminal 2", exact: true }).getAttribute("aria-pressed") !== "true")
+    throw new Error("Terminal tab keyboard navigation failed");
+  await page.locator(".terminal-instance:not([hidden]) .xterm-helper-textarea").focus();
+  await page.keyboard.type("exit");
+  await page.keyboard.press("Enter");
+  await page.waitForFunction(() => document.querySelectorAll("#terminal-tabs .tab").length === 1);
+  if (await terminalTabs.getByRole("button", { name: "Terminal 1", exact: true }).getAttribute("aria-pressed") !== "true")
+    throw new Error("Exiting a terminal did not select the remaining session");
+  await page.locator("#terminal-add").click();
+  await page.waitForFunction(() => document.querySelectorAll("#terminal .terminal-instance").length === 2 &&
+    document.querySelector("#terminal-status").textContent.startsWith("Connected."));
+  await page.keyboard.type("sleep 1; exit");
+  await page.keyboard.press("Enter");
+  await terminalTabs.getByRole("button", { name: "Terminal 1", exact: true }).click();
+  await page.waitForFunction(() => document.querySelectorAll("#terminal-tabs .tab").length === 1);
+  if (await terminalTabs.getByRole("button", { name: "Terminal 1", exact: true }).getAttribute("aria-pressed") !== "true")
+    throw new Error("A background terminal exit changed the active session");
+  await page.locator("#terminal-add").click();
+  await page.waitForFunction(() => document.querySelectorAll("#terminal .terminal-instance").length === 2 &&
+    document.querySelector("#terminal-status").textContent.startsWith("Connected."));
+  await terminalTabs.getByRole("button", { name: "Close Terminal 4" }).click();
+  if (await terminalTabs.locator(".tab").count() !== 1)
+    throw new Error("Closing one terminal did not preserve the other");
+  await page.locator("#terminal-add").click();
+  await page.waitForFunction(() => document.querySelectorAll("#terminal .terminal-instance").length === 2 &&
+    document.querySelector("#terminal-status").textContent.startsWith("Connected."));
   await page.locator("#terminal-toggle").click();
-  if (await page.locator("#terminal-pane").isVisible())
-    throw new Error("Closing the terminal did not hide the pane");
+  if (await page.locator("#terminal-pane").isVisible() ||
+      await page.locator("#terminal .terminal-instance").count())
+    throw new Error("Closing the terminal did not end all sessions and hide the pane");
   await page.locator("#terminal-toggle").click();
   await page.waitForFunction(() => document.querySelector("#terminal-status").textContent.startsWith("Connected."));
   if (terminalRequests.length !== 2) throw new Error("Reopening terminal reloaded its assets");
-  await page.locator("#terminal-toggle").click();
+  await page.locator(".terminal-instance:not([hidden]) .xterm-helper-textarea").focus();
+  await page.keyboard.type("exit");
+  await page.keyboard.press("Enter");
+  await page.locator("#terminal-pane").waitFor({ state: "hidden" });
   if (errors.length) throw new Error(errors.join("\n"));
   console.log("Browser smoke: visual widgets, sanitized HTML, cursor clicks and proxy paths passed");
 } finally {

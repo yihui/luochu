@@ -17,31 +17,32 @@
     </span>
   </header>
   <main>
-    <aside id="sidebar">
-      <nav aria-label="Sidebar">
-        <button id="files-toggle" type="button" aria-pressed="true">Files</button>
-        <button id="git-toggle" type="button" aria-pressed="false" hidden>Git</button>
-      </nav>
-      <div id="file-tree" aria-label="Project files"></div>
-      <section id="git-pane" aria-label="Git" hidden></section>
+    <aside id="sidebar" class="sidebar panel">
+      <nav id="sidebar-tabs" class="tabset" aria-label="Sidebar"></nav>
+      <div id="file-tree" class="file-tree" aria-label="Project files"></div>
+      <section id="git-pane" class="git-pane panel" aria-label="Git" hidden></section>
     </aside>
-    <nav id="file-tabs" aria-label="Open files"></nav>
-    <section id="editor" aria-label="Source editor"></section>
-    <iframe id="preview-pane" title="Djot preview" sandbox="allow-same-origin"
+    <nav id="file-tabs" class="tabset editor-tabs" aria-label="Open files"></nav>
+    <section id="editor" class="editor-surface source-editor" aria-label="Source editor"></section>
+    <iframe id="preview-pane" class="editor-surface preview-pane" title="Djot preview" sandbox="allow-same-origin"
       srcdoc="<!doctype html><html><head><link rel='stylesheet' href='assets/preview.css'></head><body><article id='preview'></article></body></html>"></iframe>
-    <section id="git-diff" class="content-panel" aria-label="Git diff" hidden>
+    <section id="git-diff" class="content-panel panel" aria-label="Git diff" hidden>
       <div id="git-diff-content"></div>
     </section>
-    <section id="git-history" class="content-panel" aria-label="Git history" hidden>
+    <section id="git-history" class="content-panel panel" aria-label="Git history" hidden>
       <div class="git-history-content">
         <div id="git-history-list" aria-label="Commits"></div>
         <pre id="git-history-diff"></pre>
       </div>
     </section>
-    <div id="file-status" role="status" aria-live="polite"></div>
-    <section id="terminal-pane" aria-label="Terminal" hidden>
-      <div id="terminal-status" role="status"></div>
-      <div id="terminal"></div>
+    <div id="file-status" class="file-status" role="status" aria-live="polite"></div>
+    <section id="terminal-pane" class="terminal-pane panel" aria-label="Terminal" hidden>
+      <div class="terminal-bar">
+        <nav id="terminal-tabs" class="tabset" aria-label="Terminals"></nav>
+        <button id="terminal-add" class="tab-action" type="button" aria-label="New terminal" title="New terminal" disabled>+</button>
+      </div>
+      <div id="terminal-status" class="terminal-status" role="status"></div>
+      <div id="terminal" class="terminal-output"></div>
     </section>
   </main>
   <script src="assets/app.js"></script>
