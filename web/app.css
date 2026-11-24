@@ -119,7 +119,6 @@ body {
   &[hidden] { display: none; }
 }
 #git-diff {
-  > .git-diff-header { display: flex; justify-content: space-between; gap: 1em; padding: 0.4em; }
   #git-diff-content {
     flex: 1; min-height: 0; overflow: auto;
     &::after { content: ""; display: block; height: calc(100% - 3em); }
@@ -150,7 +149,6 @@ body {
   }
 }
 #git-history {
-  .git-history-header { padding: 0.4em; border-bottom: 1px solid var(--border); }
   .git-history-content { flex: 1; min-height: 0; display: grid;
     grid-template-columns: 13.75em minmax(0, 1fr); }
   #git-history-list { overflow: auto; border-right: 1px solid var(--border); background: var(--code-bg); }

@@ -445,23 +445,19 @@ fetch(apiUrl('api/capabilities'), {credentials: 'same-origin'}).then((response) 
   if (capabilities.terminal) terminalControls.hidden = false;
   if (capabilities.git) {
     document.querySelector('#git-toggle').hidden = false;
-    document.querySelector('#project-root').hidden = false;
   }
 }).catch((error) => console.error('Could not load capabilities:', error));
 
 const gitToggle = document.querySelector('#git-toggle'), filesToggle = document.querySelector('#files-toggle'),
-  gitPane = document.querySelector('#git-pane'), projectRoot = document.querySelector('#project-root');
-projectRoot.onclick = () => selectGitDirectory('');
+  gitPane = document.querySelector('#git-pane');
 filesToggle.onclick = () => {
   fileTree.hidden = false;
-  projectRoot.hidden = gitToggle.hidden;
   gitPane.hidden = true;
   filesToggle.setAttribute('aria-pressed', 'true');
   gitToggle.setAttribute('aria-pressed', 'false');
 };
 gitToggle.onclick = async () => {
   fileTree.hidden = true;
-  projectRoot.hidden = true;
   gitPane.hidden = false;
   filesToggle.setAttribute('aria-pressed', 'false');
   gitToggle.setAttribute('aria-pressed', 'true');

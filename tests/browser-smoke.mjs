@@ -609,6 +609,7 @@ try {
     const fixture = mkdtempSync(join(tmpdir(), "luochu-git-browser-"));
     let gitServer;
     try {
+      writeFileSync(join(fixture, "root.txt"), "root content\n");
       for (const name of ["first", "second"]) {
         const dir = join(fixture, name);
         mkdirSync(dir);
@@ -785,7 +786,7 @@ try {
       await realGitPage.locator("#git-toggle").click();
       await realGitPage.getByRole("link", { name: "? second.txt" }).waitFor();
       await realGitPage.locator("#files-toggle").click();
-      await realGitPage.locator("#project-root").click();
+      await realGitPage.locator("#file-tree").getByText("root.txt", { exact: true }).click();
       await realGitPage.locator("#git-toggle").click();
       await realGitPage.getByText("Not a Git repository", { exact: true }).waitFor();
       await realGitPage.locator("#file-tabs").getByRole("button", { name: "first.txt *", exact: true }).click();

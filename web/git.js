@@ -55,7 +55,7 @@ export function createGitPane(pane, apiUrl, initialDirectory, openFile, openGitT
     pullButton = document.createElement('button'), pushButton = document.createElement('button'),
     historyButton = document.createElement('button'),
     diff = document.querySelector('#git-diff'),
-    diffTitle = document.querySelector('#git-diff-title'), diffContent = document.querySelector('#git-diff-content'),
+    diffContent = document.querySelector('#git-diff-content'),
     reviewByElement = new WeakMap();
   header.className = 'git-header';
   branch.setAttribute('aria-label', 'Git branch');
@@ -442,7 +442,6 @@ export function createGitPane(pane, apiUrl, initialDirectory, openFile, openGitT
     if (!diff.hidden) { navigateDiff(selected); return; }
     const current = ++diffSequence;
     diffContent.replaceChildren();
-    diffTitle.textContent = 'Changes';
     diff.hidden = false;
     observer = new IntersectionObserver((entries) => {
       if (current !== diffSequence) return;
