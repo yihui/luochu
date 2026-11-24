@@ -563,7 +563,7 @@ try {
     throw new Error("Automatic refresh loaded an off-screen diff");
   await gitPage.locator("#git-diff-content").evaluate((node) => { node.scrollTop = node.scrollHeight; });
   await gitPage.getByText("last diff version 2", { exact: true }).waitFor();
-  await gitPage.getByRole("button", { name: "Close diff" }).click();
+  await gitPage.getByRole("button", { name: "Close Git diff" }).click();
   if (!await gitPage.evaluate(() => window.__LUOCHU_EDITOR_VIEW__.state.doc.toString().endsWith(" unsaved")))
     throw new Error("Git diff lost the dirty editor buffer");
   await gitPage.getByRole("checkbox", { name: "Unstage file-0000.txt", exact: true }).uncheck();
@@ -587,7 +587,7 @@ try {
       return bounds.top >= viewport.top && bounds.top < viewport.bottom;
     });
   if (!selectedPosition) throw new Error("Review did not navigate to the selected file");
-  await gitPage.getByRole("button", { name: "Close diff" }).click();
+  await gitPage.getByRole("button", { name: "Close Git diff" }).click();
   await gitPage.locator("#files-toggle").click();
   await gitPage.locator("#file-tree").getByText("two", { exact: true }).click();
   await gitPage.locator("#file-tree").getByText("two.txt", { exact: true }).click();
@@ -613,6 +613,15 @@ try {
         const init = spawnSync("git", ["init", "-q", dir], { encoding: "utf8" });
         if (init.status !== 0) throw new Error(init.stderr);
         writeFileSync(join(dir, `${name}.txt`), `${name} content\n`);
+      }
+      const firstRepo = join(fixture, "first");
+      writeFileSync(join(firstRepo, "committed.txt"), "committed content\n");
+      for (const args of [
+        ["add", "committed.txt"],
+        ["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "history fixture"],
+      ]) {
+        const result = spawnSync("git", ["-C", firstRepo, ...args], { encoding: "utf8" });
+        if (result.status !== 0) throw new Error(result.stderr);
       }
       gitServer = spawn(binary, ["-port", "0", "-project", fixture, "-base-path", "/proxy"], {
         stdio: ["ignore", "pipe", "pipe"],
@@ -644,8 +653,54 @@ try {
       await realGitPage.locator("#git-toggle").click();
       await realGitPage.getByRole("link", { name: "? first.txt" }).click();
       await realGitPage.getByText("+first content", { exact: false }).waitFor();
+      const tabBar = realGitPage.locator("#file-tabs");
+      if (await tabBar.getByRole("button", { name: "Git diff", exact: true }).getAttribute("aria-pressed") !== "true" ||
+          await realGitPage.locator("#editor").isVisible() || await realGitPage.locator("#preview-pane").isVisible() ||
+          await realGitPage.getByRole("button", { name: "Close diff", exact: true }).count())
+        throw new Error("Diff tab does not exclusively display the Git diff");
+      await realGitPage.getByRole("button", { name: "History", exact: true }).click();
+      await realGitPage.locator("#git-history").getByRole("button", { name: /history fixture/ }).click();
+      await realGitPage.locator("#git-history-diff").getByText("+committed content", { exact: false }).waitFor();
+      const historyColors = await realGitPage.locator("#git-history").evaluate((node) => ({
+        list: getComputedStyle(node.querySelector("#git-history-list")).backgroundColor,
+        diff: getComputedStyle(node.querySelector("#git-history-diff")).backgroundColor,
+      }));
+      if (historyColors.list === "rgba(0, 0, 0, 0)" || historyColors.diff !== "rgba(0, 0, 0, 0)")
+        throw new Error(`Incorrect Git history backgrounds: ${JSON.stringify(historyColors)}`);
+      if (await tabBar.getByRole("button", { name: "Git history", exact: true }).getAttribute("aria-pressed") !== "true" ||
+          await realGitPage.locator("#editor").isVisible() || await realGitPage.locator("#git-diff").isVisible() ||
+          !await realGitPage.getByRole("button", { name: "Save", exact: true }).isDisabled())
+        throw new Error("History tab does not exclusively display Git history");
+      await tabBar.getByRole("button", { name: "Git diff", exact: true }).click();
+      await realGitPage.getByText("+first content", { exact: false }).waitFor();
+      await tabBar.getByRole("button", { name: "Git history", exact: true }).click();
+      await realGitPage.locator("#git-history").getByRole("button", { name: /history fixture/ }).waitFor();
+      await tabBar.getByRole("button", { name: "Close Git history", exact: true }).click();
+      await realGitPage.getByText("+first content", { exact: false }).waitFor();
+      await tabBar.getByRole("button", { name: "Close Git diff", exact: true }).click();
+      if (!await realGitPage.locator("#editor").isVisible() || !await realGitPage.locator("#preview-pane").isVisible())
+        throw new Error("Closing Git tabs did not restore the demo");
+      await realGitPage.getByRole("button", { name: "History", exact: true }).click();
+      await realGitPage.locator("#git-history").getByRole("button", { name: /history fixture/ }).waitFor();
+      await realGitPage.getByRole("link", { name: "? first.txt" }).click();
+      await realGitPage.getByText("+first content", { exact: false }).waitFor();
       await realGitPage.getByRole("button", { name: "Open first.txt at line 1", exact: true }).click();
       await realGitPage.waitForFunction(() => document.title === "Luochu - first/first.txt");
+      await realGitPage.evaluate(() => {
+        const view = window.__LUOCHU_EDITOR_VIEW__;
+        view.dispatch({ changes: { from: view.state.doc.length, insert: "unsaved edit" } });
+      });
+      await tabBar.getByRole("button", { name: "Git history", exact: true }).click();
+      await realGitPage.locator("#git-history").getByRole("button", { name: /history fixture/ }).waitFor();
+      await tabBar.getByRole("button", { name: "Git diff", exact: true }).click();
+      await realGitPage.getByText("+first content", { exact: false }).waitFor();
+      await realGitPage.locator("#files-toggle").click();
+      await tabBar.getByRole("button", { name: "first.txt *", exact: true }).click();
+      if (!await realGitPage.evaluate(() => window.__LUOCHU_EDITOR_VIEW__.state.doc.toString().endsWith("unsaved edit")))
+        throw new Error("Switching Git tabs lost unsaved file edits");
+      await tabBar.getByRole("button", { name: "Git diff", exact: true }).click();
+      await realGitPage.getByText("+first content", { exact: false }).waitFor();
+      await realGitPage.locator("#git-toggle").click();
       await realGitPage.getByRole("link", { name: "? first.txt" }).click();
       await realGitPage.getByRole("checkbox", { name: "Stage first.txt", exact: true }).check();
       await realGitPage.getByRole("checkbox", { name: "Unstage first.txt", exact: true }).waitFor();
@@ -731,7 +786,7 @@ try {
       await realGitPage.locator("#project-root").click();
       await realGitPage.locator("#git-toggle").click();
       await realGitPage.getByText("Not a Git repository", { exact: true }).waitFor();
-      await realGitPage.locator("#file-tabs").getByRole("button", { name: "first.txt", exact: true }).click();
+      await realGitPage.locator("#file-tabs").getByRole("button", { name: "first.txt *", exact: true }).click();
       await realGitPage.getByRole("link", { name: "? first.txt" }).waitFor();
       await realGitPage.close();
     } finally {

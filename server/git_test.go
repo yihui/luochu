@@ -205,6 +205,84 @@ func TestGitDetectsAncestorAndNestedRepositories(t *testing.T) {
 	}
 }
 
+func TestGitCommitBranchesLogAndPush(t *testing.T) {
+	if !gitAvailable() {
+		t.Skip("git unavailable")
+	}
+	root := t.TempDir()
+	testGit(t, root, "init", "-q")
+	testGit(t, root, "config", "user.name", "Test")
+	testGit(t, root, "config", "user.email", "test@example.com")
+	if err := os.WriteFile(filepath.Join(root, "tracked.txt"), []byte("first\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	testGit(t, root, "add", "tracked.txt")
+	testGit(t, root, "commit", "-qm", "initial")
+	branchOut, err := gitCommand(root, "branch", "--show-current")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mainBranch := strings.TrimSpace(string(branchOut))
+
+	remote := filepath.Join(t.TempDir(), "remote.git")
+	testGit(t, t.TempDir(), "init", "--bare", remote)
+	testGit(t, root, "remote", "add", "origin", remote)
+
+	s, err := New(Config{Token: "test-token", ProjectRoot: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.watcher.Close() })
+	post := func(body string, want int) {
+		t.Helper()
+		rec := fileRequest(s, http.MethodPost, "/api/git?dir=", strings.NewReader(body))
+		if rec.Code != want {
+			t.Fatalf("POST %s: %d %s", body, rec.Code, rec.Body.String())
+		}
+	}
+	post(`{"action":"commit","message":"no staged changes"}`, http.StatusConflict)
+	if err := os.WriteFile(filepath.Join(root, "tracked.txt"), []byte("second\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	testGit(t, root, "add", "tracked.txt")
+	post(`{"action":"commit","message":"second change"}`, http.StatusNoContent)
+
+	testGit(t, root, "switch", "-c", "feature")
+	post(`{"action":"switch","name":"`+mainBranch+`"}`, http.StatusNoContent)
+	post(`{"action":"cleanup","base":"`+mainBranch+`","local":["feature"],"remoteBranches":[],"worktrees":[],"removeWorktrees":false}`, http.StatusNoContent)
+	post(`{"action":"push"}`, http.StatusNoContent)
+	post(`{"action":"pull"}`, http.StatusNoContent)
+
+	rec := fileRequest(s, http.MethodGet, "/api/git?dir=", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: %d %s", rec.Code, rec.Body.String())
+	}
+	var data struct {
+		Branch   string        `json:"branch"`
+		Branches []string      `json:"branches"`
+		Remotes  []string      `json:"remotes"`
+		Upstream string        `json:"upstream"`
+		Log      []gitLogEntry `json:"log"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &data); err != nil {
+		t.Fatal(err)
+	}
+	if data.Branch != mainBranch || len(data.Branches) != 1 || data.Branches[0] != mainBranch ||
+		len(data.Remotes) != 1 || data.Remotes[0] != "origin" ||
+		data.Upstream != "origin/"+mainBranch || len(data.Log) != 2 {
+		t.Fatalf("unexpected Git info: %+v", data)
+	}
+	rec = fileRequest(s, http.MethodGet, "/api/git?dir=&sha="+url.QueryEscape(data.Log[0].Hash), nil)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "+second") ||
+		!strings.Contains(rec.Header().Get("Content-Type"), "text/plain") {
+		t.Fatalf("commit diff: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = fileRequest(s, http.MethodGet, "/api/git?dir=&sha=--help", nil)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("invalid commit ID: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestGitUnstageUnbornAndRename(t *testing.T) {
 	if !gitAvailable() {
 		t.Skip("git unavailable")

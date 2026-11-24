@@ -31,8 +31,15 @@
     <iframe id="preview-pane" title="Djot preview" sandbox="allow-same-origin"
       srcdoc="<!doctype html><html><head><link rel='stylesheet' href='assets/preview.css'></head><body><article id='preview'></article></body></html>"></iframe>
     <section id="git-diff" aria-label="Git diff" hidden>
-      <div class="git-diff-header"><strong id="git-diff-title"></strong><button id="git-diff-close" type="button">Close diff</button></div>
+      <div class="git-diff-header"><strong id="git-diff-title"></strong></div>
       <div id="git-diff-content"></div>
+    </section>
+    <section id="git-history" aria-label="Git history" hidden>
+      <div class="git-history-header"><strong>History</strong></div>
+      <div class="git-history-content">
+        <div id="git-history-list" aria-label="Commits"></div>
+        <pre id="git-history-diff"></pre>
+      </div>
     </section>
     <div id="file-status" role="status" aria-live="polite"></div>
     <section id="terminal-pane" aria-label="Terminal" hidden>

@@ -164,7 +164,7 @@ function editorState(doc, djot, separator = '\n') {
       EditorView.updateListener.of((update) => {
         view.dom.classList.toggle('visual', view.state.field(modeField))
         if (update.docChanged && (!activeTab || activeTab.djot)) schedulePreview()
-        if (update.docChanged && activeTab) {
+        if (update.docChanged && activeTab && !activeTab.kind) {
           activeTab.dirty = true
           updateFileUI()
         }
@@ -237,7 +237,7 @@ function selectGitDirectory(directory) {
   gitUI?.setDirectory(directory);
 }
 function updateFileUI() {
-  saveButton.disabled = !activeTab || activeTab.saving
+  saveButton.disabled = !activeTab || !!activeTab.kind || activeTab.saving
   saveButton.textContent = activeTab?.conflict ? 'Conflict' : activeTab?.dirty ? 'Save*' : 'Save'
   fileTabs.replaceChildren()
   for (const tab of tabs) {
@@ -245,47 +245,74 @@ function updateFileUI() {
       close = document.createElement('button')
     item.className = `file-tab${tab === activeTab ? ' active' : ''}`
     select.type = close.type = 'button'
-    select.textContent = `${tab.path.split('/').pop()}${tab.dirty ? ' *' : ''}`
-    select.title = tab.path
+    select.textContent = tab.kind === 'git-diff' ? 'Git diff'
+      : tab.kind === 'git-history' ? 'Git history'
+      : `${tab.path.split('/').pop()}${tab.dirty ? ' *' : ''}`
+    select.title = tab.path || select.textContent
     select.setAttribute('aria-pressed', String(tab === activeTab))
     select.onclick = () => { openSequence++; activateTab(tab) }
     close.textContent = '×'
-    close.setAttribute('aria-label', `Close ${tab.path}`)
+    close.setAttribute('aria-label', `Close ${tab.path || select.textContent}`)
     close.onclick = () => closeTab(tab)
     item.append(select, close)
     fileTabs.append(item)
   }
 }
 function activateTab(tab) {
-  if (activeTab) {
+  const previous = activeTab
+  if (activeTab && !activeTab.kind) {
     activeTab.state = view.state
     activeTab.scrollTop = view.scrollDOM.scrollTop
-  } else demoState = view.state
+  } else if (!activeTab) demoState = view.state
   activeTab = tab
-  currentPath = tab?.path || null
-  selectGitDirectory(tab ? tab.path.split('/').slice(0, -1).join('/') : '')
-  gitUI?.closeDiff()
-  view.setState(tab ? tab.state : demoState)
-  view.scrollDOM.scrollTop = tab?.scrollTop || 0
-  const djot = !tab || tab.djot, visual = djot && view.state.field(modeField)
-  view.dom.classList.toggle('visual', visual)
-  toggle.hidden = !djot
-  toggle.textContent = visual ? 'Visual' : 'Source'
-  previewPane.hidden = !djot
-  document.querySelector('main').classList.toggle('plain-file', !djot)
-  document.title = tab ? `Luochu - ${tab.path}` : 'Luochu'
+  const gitTab = tab?.kind === 'git-diff' || tab?.kind === 'git-history'
+  currentPath = gitTab ? null : tab?.path || null
+  if (!gitTab && (tab || !previous?.kind))
+    selectGitDirectory(tab ? tab.path.split('/').slice(0, -1).join('/') : '')
+  const gitDiff = document.querySelector('#git-diff'), gitHistory = document.querySelector('#git-history')
+  document.querySelector('main').classList.toggle('show-git-content', !!gitTab)
+  if (gitTab) {
+    if (tab.kind !== 'git-diff') gitUI?.closeDiff()
+    gitHistory.hidden = tab.kind !== 'git-history'
+    document.querySelector('main').classList.toggle('plain-file', true)
+    toggle.hidden = true
+    if (tab.kind === 'git-diff') gitUI?.showDiff(tab.selected)
+    else gitUI?.showHistory()
+  } else {
+    gitUI?.closeDiff()
+    gitDiff.hidden = true
+    gitHistory.hidden = true
+    view.setState(tab ? tab.state : demoState)
+    view.scrollDOM.scrollTop = tab?.scrollTop || 0
+    const djot = !tab || tab.djot, visual = djot && view.state.field(modeField)
+    view.dom.classList.toggle('visual', visual)
+    toggle.hidden = !djot
+    toggle.textContent = visual ? 'Visual' : 'Source'
+    previewPane.hidden = !djot
+    document.querySelector('main').classList.toggle('plain-file', !djot)
+    if (djot) schedulePreview()
+  }
+  if (!gitTab) document.title = tab ? `Luochu - ${tab.path}` : 'Luochu'
+  else document.title = `Luochu - ${tab.kind === 'git-diff' ? 'Git diff' : 'Git history'}`
   fileStatus.textContent = ''
   updateFileUI()
-  if (djot) schedulePreview()
 }
 function closeTab(tab) {
   openSequence++
-  if (tab.saving) { fileStatus.textContent = `Wait for ${tab.path} to finish saving.`; return }
-  if (tab.dirty && !window.confirm(`Discard unsaved changes in ${tab.path}?`)) return
+  if (!tab.kind && tab.saving) { fileStatus.textContent = `Wait for ${tab.path} to finish saving.`; return }
+  if (!tab.kind && tab.dirty && !window.confirm(`Discard unsaved changes in ${tab.path}?`)) return
   const index = tabs.indexOf(tab)
   tabs.splice(index, 1)
   if (tab === activeTab) activateTab(tabs[Math.min(index, tabs.length - 1)] || null)
   else updateFileUI()
+}
+function openGitTab(kind, selected = null) {
+  const existing = tabs.find((tab) => tab.kind === kind)
+  const tab = existing || {kind, path: kind === 'git-diff' ? 'Git diff' : 'Git history', selected}
+  if (!existing) tabs.push(tab)
+  tab.selected = selected
+  openSequence++
+  activateTab(tab)
 }
 window.addEventListener('beforeunload', (event) => {
   if (tabs.some((tab) => tab.dirty || tab.saving)) event.preventDefault()
@@ -338,7 +365,7 @@ function jumpToLine(line) {
   view.focus()
 }
 async function openFile(path, line = null) {
-  const sequence = ++openSequence, existing = tabs.find((tab) => tab.path === path)
+  const sequence = ++openSequence, existing = tabs.find((tab) => !tab.kind && tab.path === path)
   if (existing) { activateTab(existing); jumpToLine(line); return }
   fileStatus.textContent = ''
   let response, text
@@ -374,7 +401,7 @@ function tabText(tab, state) {
 }
 saveButton.onclick = async () => {
   const tab = activeTab
-  if (!tab || tab.saving) return
+  if (!tab || tab.kind || tab.saving) return
   const text = tabText(tab, view.state)
   tab.saving = true
   updateFileUI()
@@ -442,7 +469,7 @@ gitToggle.onclick = async () => {
   try {
     if (!gitAssets) gitAssets = import('./git.js').catch((error) => { gitAssets = null; throw error; });
     const module = await gitAssets;
-    if (!gitUI) gitUI = module.createGitPane(gitPane, apiUrl, gitDirectory, openFile);
+    if (!gitUI) gitUI = module.createGitPane(gitPane, apiUrl, gitDirectory, openFile, openGitTab);
     if (!gitPane.hidden) gitUI.refresh();
   } catch (error) {
     gitPane.textContent = `Could not load Git: ${error.message}`;

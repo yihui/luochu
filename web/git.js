@@ -42,16 +42,23 @@ export function statusRows(changes) {
   }));
 }
 
-export function createGitPane(pane, apiUrl, initialDirectory, openFile) {
-  let directory = initialDirectory, sequence = 0, diffSequence = 0, statusRequests = 0, busy = false, rows = [],
-    statusKnown = false, statusFailed = false, observer = null, reviewItems = [], pendingTarget = null;
-  const header = document.createElement('div'), branch = document.createElement('strong'),
+export function createGitPane(pane, apiUrl, initialDirectory, openFile, openGitTab) {
+  let directory = initialDirectory, sequence = 0, diffSequence = 0, historySequence = 0,
+    statusRequests = 0, busy = false, rows = [],
+    statusKnown = false, statusFailed = false, observer = null, reviewItems = [], pendingTarget = null,
+    gitInfo = null;
+  const header = document.createElement('div'), branch = document.createElement('select'),
     refreshButton = document.createElement('button'), root = document.createElement('div'),
     message = document.createElement('div'), list = document.createElement('div'),
+    actions = document.createElement('div'), commitInput = document.createElement('textarea'),
+    commitButton = document.createElement('button'), cleanupButton = document.createElement('button'),
+    pullButton = document.createElement('button'), pushButton = document.createElement('button'),
+    historyButton = document.createElement('button'),
     diff = document.querySelector('#git-diff'),
     diffTitle = document.querySelector('#git-diff-title'), diffContent = document.querySelector('#git-diff-content'),
-    main = document.querySelector('main'), reviewByElement = new WeakMap();
+    reviewByElement = new WeakMap();
   header.className = 'git-header';
+  branch.setAttribute('aria-label', 'Git branch');
   refreshButton.type = 'button';
   refreshButton.textContent = 'Refresh';
   header.append(branch, refreshButton);
@@ -59,7 +66,27 @@ export function createGitPane(pane, apiUrl, initialDirectory, openFile) {
   message.className = 'git-message';
   message.setAttribute('role', 'status');
   list.className = 'git-list';
-  pane.replaceChildren(header, root, message, list);
+  actions.className = 'git-actions';
+  commitInput.placeholder = 'Commit message';
+  commitInput.setAttribute('aria-label', 'Commit message');
+  commitInput.rows = 3;
+  commitButton.type = 'button';
+  commitButton.textContent = 'Commit';
+  cleanupButton.type = 'button';
+  cleanupButton.textContent = 'Cleanup merged';
+  pullButton.type = 'button';
+  pullButton.textContent = 'Pull';
+  pushButton.type = 'button';
+  pushButton.textContent = 'Push';
+  historyButton.type = 'button';
+  historyButton.textContent = 'History';
+  const commitRow = document.createElement('div'), branchRow = document.createElement('div');
+  commitRow.className = 'git-action-row';
+  commitRow.append(commitInput, commitButton);
+  branchRow.className = 'git-action-row';
+  branchRow.append(pullButton, pushButton, historyButton, cleanupButton);
+  actions.append(commitRow, branchRow);
+  pane.replaceChildren(header, root, message, list, actions);
 
   const url = (params = {}) => apiUrl(`api/git?${new URLSearchParams({dir: directory, ...params})}`);
   async function responseText(response) {
@@ -67,6 +94,180 @@ export function createGitPane(pane, apiUrl, initialDirectory, openFile) {
     if (!response.ok) throw new Error(text.trim() || `Request failed: ${response.status}`);
     return text;
   }
+  async function gitAction(body) {
+    if (busy) {
+      message.textContent = 'Wait for the Git operation to finish.';
+      return;
+    }
+    if (statusFailed) {
+      message.textContent = 'Git status is stale; refresh before running Git operations.';
+      return;
+    }
+    busy = true;
+    sequence++;
+    const currentDirectory = directory;
+    message.textContent = '';
+    try {
+      await responseText(await fetch(url(), {
+        method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body),
+      }));
+      if (directory === currentDirectory) await refresh();
+    } catch (error) {
+      if (directory === currentDirectory) message.textContent = `Git operation failed: ${error.message}`;
+    } finally {
+      busy = false;
+      commitButton.disabled = !rows.some((row) => row.staged);
+      commitInput.disabled = false;
+      pushButton.disabled = !branch.value || !(gitInfo?.remotes?.length);
+      pullButton.disabled = !branch.value || !(gitInfo?.remotes?.length);
+      cleanupButton.disabled = false;
+      historyButton.disabled = false;
+    }
+  }
+  commitButton.onclick = () => gitAction({action: 'commit', message: commitInput.value});
+  branch.onchange = () => {
+    if (branch.value) gitAction({action: 'switch', name: branch.value});
+  };
+  pullButton.onclick = () => gitAction({action: 'pull'});
+  pushButton.onclick = () => gitAction({action: 'push'});
+  const historyList = document.querySelector('#git-history-list'),
+    historyDiff = document.querySelector('#git-history-diff');
+  async function showHistory() {
+    const current = ++historySequence;
+    historyList.textContent = 'Loading history…';
+    historyDiff.textContent = '';
+    try {
+      const data = JSON.parse(await responseText(await fetch(url(), {credentials: 'same-origin'})));
+      if (current !== historySequence) return;
+      historyList.replaceChildren();
+      for (const entry of data.log || []) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'git-history-entry';
+        button.textContent = `${entry.short} ${entry.subject}`;
+        button.title = `${entry.hash}\n${entry.author} · ${entry.date}`;
+        button.onclick = async () => {
+          const selection = ++historySequence;
+          historyDiff.textContent = 'Loading diff…';
+          try {
+            const text = await responseText(await fetch(url({sha: entry.hash}), {credentials: 'same-origin'}));
+            if (selection === historySequence) historyDiff.textContent = text;
+          } catch (error) {
+            if (selection === historySequence) historyDiff.textContent = `Could not load commit: ${error.message}`;
+          }
+        };
+        historyList.append(button);
+      }
+      if (!data.log?.length) historyList.textContent = 'No commits';
+    } catch (error) {
+      if (current === historySequence) historyList.textContent = `Could not load history: ${error.message}`;
+    }
+  }
+  historyButton.onclick = () => openGitTab('git-history');
+  const cleanupDialog = document.createElement('dialog'), cleanupBase = document.createElement('select'),
+    cleanupLocal = document.createElement('div'), cleanupWorktrees = document.createElement('div'),
+    cleanupNote = document.createElement('div'),
+    cleanupActions = document.createElement('div'), cleanupCancel = document.createElement('button'),
+    cleanupRemove = document.createElement('button');
+  cleanupDialog.className = 'git-cleanup';
+  cleanupBase.setAttribute('aria-label', 'Cleanup base branch');
+  cleanupCancel.type = 'button';
+  cleanupCancel.textContent = 'Cancel';
+  cleanupRemove.type = 'button';
+  cleanupRemove.textContent = 'Delete selected';
+  cleanupActions.append(cleanupCancel, cleanupRemove);
+  cleanupDialog.append(cleanupBase, cleanupNote, cleanupLocal, cleanupWorktrees, cleanupActions);
+  pane.append(cleanupDialog);
+  cleanupCancel.onclick = () => cleanupDialog.close();
+
+  function cleanupSection(title, container) {
+    container.replaceChildren();
+    const heading = document.createElement('strong');
+    heading.textContent = title;
+    container.append(heading);
+  }
+  async function loadCleanupPreview() {
+    cleanupRemove.disabled = busy;
+    cleanupNote.textContent = 'Scanning branches…';
+    try {
+      const response = await fetch(url(), {
+        method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({action: 'cleanup-preview', base: cleanupBase.value}),
+      });
+      const data = JSON.parse(await responseText(response));
+      cleanupNote.textContent = data.fetchNote
+        ? `Fetch/prune warning: ${data.fetchNote}`
+        : 'Candidates use merged branches, pruned remotes, and GitHub merged/closed PR branches.';
+
+      cleanupSection('Local branches', cleanupLocal);
+      for (const candidate of [...(data.local || [])].sort((a, b) => a.name.localeCompare(b.name))) {
+        const label = document.createElement('label'), input = document.createElement('input'),
+          text = document.createElement('span');
+        input.type = 'checkbox';
+        input.checked = true;
+        input.dataset.name = candidate.name;
+        input.dataset.cleanup = 'local';
+        text.textContent = ` ${candidate.name} — ${candidate.reason}`;
+        label.append(input, text);
+        cleanupLocal.append(label);
+      }
+      if (!data.local?.length) cleanupLocal.append(document.createTextNode(' No candidates'));
+
+      cleanupSection('Associated worktrees', cleanupWorktrees);
+      for (const wt of [...(data.worktrees || [])].sort((a, b) => a.path.localeCompare(b.path))) {
+        const label = document.createElement('label'), input = document.createElement('input'),
+          text = document.createElement('span');
+        input.type = 'checkbox';
+        input.checked = false;
+        input.dataset.path = wt.path;
+        text.textContent = ` ${wt.path} — ${wt.branch}`;
+        label.append(input, text);
+        cleanupWorktrees.append(label);
+      }
+      if (!data.worktrees?.length) cleanupWorktrees.append(document.createTextNode(' No associated worktrees'));
+    } catch (error) {
+      cleanupNote.textContent = `Could not scan branches: ${error.message}`;
+    }
+  }
+  cleanupButton.onclick = async () => {
+    cleanupBase.replaceChildren();
+    for (const name of gitInfo?.branches || []) {
+      const option = document.createElement('option');
+      option.value = option.textContent = name;
+      cleanupBase.append(option);
+    }
+    const preferred = gitInfo?.branches?.includes('main') ? 'main'
+      : gitInfo?.branches?.includes('master') ? 'master' : gitInfo?.branch;
+    if ([...cleanupBase.options].some((option) => option.value === preferred))
+      cleanupBase.value = preferred;
+    cleanupDialog.showModal();
+    await loadCleanupPreview();
+  };
+  cleanupBase.onchange = loadCleanupPreview;
+  cleanupRemove.onclick = async () => {
+    const local = [...cleanupLocal.querySelectorAll('[data-cleanup="local"]:checked')]
+      .map((input) => input.dataset.name);
+    const worktrees = [...cleanupWorktrees.querySelectorAll('input:checked')]
+      .map((input) => input.dataset.path).filter(Boolean);
+    if (!local.length && !worktrees.length) return;
+    if (!window.confirm(`Delete ${local.length} local branch(es) and remove ${worktrees.length} worktree(s)?`)) return;
+    busy = true;
+    cleanupRemove.disabled = true;
+    try {
+      await responseText(await fetch(url(), {
+        method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({action: 'cleanup', base: cleanupBase.value, local, worktrees}),
+      }));
+      cleanupDialog.close();
+      await refresh();
+    } catch (error) {
+      cleanupNote.textContent = `Cleanup failed: ${error.message}`;
+    } finally {
+      busy = false;
+      cleanupRemove.disabled = false;
+    }
+  };
   function closeDiff() {
     diffSequence++;
     observer?.disconnect();
@@ -75,9 +276,7 @@ export function createGitPane(pane, apiUrl, initialDirectory, openFile) {
     reviewItems = [];
     pendingTarget = null;
     diff.hidden = true;
-    main.classList.remove('show-git-diff');
   }
-  document.querySelector('#git-diff-close').onclick = closeDiff;
   for (const event of ['wheel', 'touchstart', 'pointerdown', 'keydown'])
     diffContent.addEventListener(event, () => { pendingTarget = null; });
   function navigateDiff(selected) {
@@ -85,6 +284,7 @@ export function createGitPane(pane, apiUrl, initialDirectory, openFile) {
     if (!item) return;
     item.section.open = true;
     pendingTarget = item;
+    loadDiff(item);
     item.section.scrollIntoView({block: 'start'});
   }
   function renderDiff(item, text) {
@@ -126,7 +326,7 @@ export function createGitPane(pane, apiUrl, initialDirectory, openFile) {
     item.content.replaceChildren(scroller);
   }
   function loadDiff(item) {
-    if (!observer || pane.hidden || document.hidden || !item.section.isConnected ||
+    if (!observer || document.hidden || !item.section.isConnected ||
       item.loading || !item.section.open) return;
     const wasLoaded = item.loaded;
     item.loading = true;
@@ -240,7 +440,6 @@ export function createGitPane(pane, apiUrl, initialDirectory, openFile) {
     diffContent.replaceChildren();
     diffTitle.textContent = 'Changes';
     diff.hidden = false;
-    main.classList.add('show-git-diff');
     observer = new IntersectionObserver((entries) => {
       if (current !== diffSequence) return;
       for (const entry of entries) {
@@ -301,7 +500,7 @@ export function createGitPane(pane, apiUrl, initialDirectory, openFile) {
     file.append(status, document.createTextNode(''));
     file.onclick = (event) => {
       event.preventDefault();
-      showDiff({path: state.row.path});
+      openGitTab('git-diff', {path: state.row.path});
     };
     action.type = 'checkbox';
     action.onchange = () => change(state.row, action);
@@ -380,11 +579,37 @@ export function createGitPane(pane, apiUrl, initialDirectory, openFile) {
     try {
       const data = JSON.parse(await responseText(await fetch(target, {credentials: 'same-origin'})));
       if (current !== sequence) return false;
-      branch.textContent = data.branch || 'Detached HEAD';
+      gitInfo = data;
+      const branches = data.branches || [];
+      const selectedBranch = branch.value;
+      branch.replaceChildren();
+      for (const name of branches) {
+        const option = document.createElement('option');
+        option.value = option.textContent = name;
+        branch.append(option);
+      }
+      if (!branches.length && data.branch) {
+        const option = document.createElement('option');
+        option.value = option.textContent = data.branch;
+        branch.append(option);
+      }
+      if ([...branch.options].some((option) => option.value === selectedBranch))
+        branch.value = selectedBranch;
+      else if ([...branch.options].some((option) => option.value === data.branch))
+        branch.value = data.branch;
       root.textContent = data.relativeRoot === '.' ? '' : data.relativeRoot;
       root.title = data.relativeRoot === '.' ? '' : data.root;
       root.hidden = data.relativeRoot === '.';
       rows = statusRows(data.changes);
+      const staged = rows.some((row) => row.staged);
+      commitButton.disabled = busy || !staged;
+      commitInput.disabled = busy;
+      branch.disabled = busy || !branch.value;
+      pushButton.disabled = busy || !data.branch || !data.remotes?.length;
+      pushButton.textContent = data.ahead ? `Push (${data.ahead})` : 'Push';
+      pullButton.disabled = busy || !data.branch || !data.remotes?.length;
+      cleanupButton.disabled = busy || !data.branch;
+      historyButton.disabled = busy;
       statusKnown = true;
       statusFailed = false;
       message.textContent = rows.length ? '' : 'No changes';
@@ -409,16 +634,18 @@ export function createGitPane(pane, apiUrl, initialDirectory, openFile) {
   setInterval(poll, 5000);
   document.addEventListener('visibilitychange', poll);
   return {
-    refresh, closeDiff,
+    refresh, closeDiff, showDiff, showHistory,
     setDirectory(next) {
       if (directory === next) return;
       directory = next;
       sequence++;
+      historySequence++;
       closeDiff();
       statusKnown = false;
       statusFailed = false;
       rows = [];
-      branch.textContent = root.textContent = message.textContent = '';
+      branch.replaceChildren();
+      root.textContent = message.textContent = '';
       pageObserver.disconnect();
       visiblePages.clear();
       pages.length = 0;

@@ -117,6 +117,11 @@ stages the remaining changes. Its diff compares the working file with the
 staged version.
 Long diff lines wrap. Click a new-file line number to open that line in the
 editor; files outside the project root cannot be opened this way.
+Enter a commit message and commit staged changes. Choose a branch from the
+header dropdown to switch, show recent commits, and pull or push the current
+branch. Cleanup merged previews merged branches, pruned gone remotes, and squash/merged
+or closed GitHub PR branches. It requires confirmation and offers associated
+worktrees for separate opt-in; dirty worktrees are never removed.
 
 ## Test
 
