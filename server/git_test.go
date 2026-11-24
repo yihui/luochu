@@ -277,6 +277,16 @@ func TestGitCommitBranchesLogAndPush(t *testing.T) {
 		!strings.Contains(rec.Header().Get("Content-Type"), "text/plain") {
 		t.Fatalf("commit diff: %d %s", rec.Code, rec.Body.String())
 	}
+	rec = fileRequest(s, http.MethodGet, "/api/git?dir=&format=files&sha="+url.QueryEscape(data.Log[0].Hash), nil)
+	var commitDiff struct {
+		Text  string   `json:"text"`
+		Paths []string `json:"paths"`
+	}
+	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &commitDiff) != nil ||
+		!strings.Contains(commitDiff.Text, "+second") || len(commitDiff.Paths) != 1 ||
+		commitDiff.Paths[0] != "tracked.txt" {
+		t.Fatalf("structured commit diff: %d %s", rec.Code, rec.Body.String())
+	}
 	rec = fileRequest(s, http.MethodGet, "/api/git?dir=&sha=--help", nil)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("invalid commit ID: %d %s", rec.Code, rec.Body.String())

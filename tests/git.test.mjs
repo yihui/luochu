@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { deepStrictEqual } from "node:assert";
-import { diffLineNumbers, diffLineTypes, statusRows } from "../web/git.js";
+import { diffLineNumbers, diffLineTypes, splitCommitDiff, statusRows } from "../web/git.js";
 
 test("diff gutters count old and new lines across hunks", () => {
   const diff = [
@@ -43,6 +43,20 @@ test("diff highlighting distinguishes headers from changed content across files"
   deepStrictEqual(diffLineTypes(diff), [
     "", "header", "header", "header", "hunk", "removed", "added", "", "", "header", "",
   ]);
+});
+
+test("commit diffs split by file without confusing metadata or changed lines for headers", () => {
+  const text = "commit abc\n\n    diff --git in a message\n\ndiff --git a/a b/a\n@@ -1 +1 @@\n" +
+    "-diff --git a/old b/old\n+diff --git a/new b/new\ndiff --git a/b b/b\nBinary files differ\n";
+  deepStrictEqual(splitCommitDiff(text, ["a", "new 名"]), {
+    metadata: "commit abc\n\n    diff --git in a message\n\n",
+    files: [
+      { path: "a", text: "diff --git a/a b/a\n@@ -1 +1 @@\n-diff --git a/old b/old\n+diff --git a/new b/new\n" },
+      { path: "new 名", text: "diff --git a/b b/b\nBinary files differ\n" },
+    ],
+  });
+  deepStrictEqual(splitCommitDiff("commit empty\n", []), { metadata: "commit empty\n", files: [] });
+  deepStrictEqual(splitCommitDiff(text, ["a"]), null);
 });
 
 test("status combines staged and unstaged changes by file", () => {

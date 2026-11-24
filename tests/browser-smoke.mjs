@@ -313,7 +313,7 @@ try {
   const numberedFixture = [
     "diff --git a/one.txt b/one.txt", "--- a/one.txt", "+++ b/one.txt", "@@ -2,3 +2,4 @@",
     " context", "-removed", `+added ${"x".repeat(500)}`, "+another", " context",
-    "@@ -20 +21 @@", "-old", "+new", "\\ No newline at end of file",
+    "@@ -69 +70 @@", "-old", "+new", "\\ No newline at end of file",
   ].join("\n") + "\n";
   let staged = false, partialStatus = "MM", lastDiffVersion = 1, rejectNextStage = false, rejectNextStatus = false,
     pauseNextStatus = false, statusGate, releaseStatus, statusStarted;
@@ -331,7 +331,7 @@ try {
   await gitPage.route("**/api/file?*", (route) => {
     const path = new URL(route.request().url()).searchParams.get("path");
     const body = path === "one/one.txt"
-      ? Array.from({ length: 30 }, (_, i) => `saved line ${i + 1}`).join("\n") : "saved file";
+      ? Array.from({ length: 150 }, (_, i) => `saved line ${i + 1}`).join("\n") : "saved file";
     return route.fulfill({ body, headers: { "X-Luochu-Hash": "hash" } });
   });
   await gitPage.route("**/api/git?*", async (route) => {
@@ -391,6 +391,7 @@ try {
   await gitPage.evaluate(() => {
     const view = window.__LUOCHU_EDITOR_VIEW__;
     view.dispatch({ changes: { from: view.state.doc.length, insert: " unsaved" } });
+    view.scrollDOM.scrollTop = view.lineBlockAt(view.state.doc.line(70).from).top - view.scrollDOM.clientHeight + 50;
   });
   await gitPage.locator("#files-toggle").focus();
   await gitPage.keyboard.press("ArrowRight");
@@ -540,7 +541,9 @@ try {
   const numberedDiff = gitPage.locator("#git-diff .git-diff-file").filter({
     has: gitPage.getByRole("heading", { name: "one.txt", exact: true }),
   });
-  await numberedDiff.getByRole("button", { name: "Open one.txt at line 21", exact: true }).waitFor();
+  await numberedDiff.getByRole("button", { name: "Open one.txt at line 70", exact: true }).waitFor();
+  if (await numberedDiff.locator(".git-diff-counts").innerText() !== "+3-2")
+    throw new Error("Working-tree diff counts include headers or omit changes");
   const gutters = await numberedDiff.evaluate((node) => {
     const rows = [...node.querySelectorAll(".git-diff-row")], source = node.querySelector(".git-diff-text"),
       scroll = node.querySelector(".git-diff-scroll"), wrapped = rows[6].querySelector(".git-diff-line"),
@@ -567,19 +570,40 @@ try {
   });
   if (gutters.old[4] !== "2" || gutters.old[5] !== "3" || gutters.old[6] !== "" ||
       gutters.current[4] !== "2" || gutters.current[5] !== "" || gutters.current[6] !== "3" ||
-      gutters.current[11] !== "21" || gutters.oldButtons || new Set(gutters.styles).size !== 1 ||
+      gutters.current[11] !== "70" || gutters.oldButtons || new Set(gutters.styles).size !== 1 ||
       gutters.alignment > 2 || gutters.width + 1 < gutters.contentWidth ||
       gutters.wrappedHeight < parseFloat(gutters.styles[0]) * 2 ||
       gutters.raw !== numberedFixture || gutters.copied !== numberedFixture.replace(/\n$/, ""))
     throw new Error(`Diff line-number gutters are incorrect: ${JSON.stringify(gutters)}`);
-  await numberedDiff.getByRole("button", { name: "Open one.txt at line 21", exact: true }).click();
+  await numberedDiff.getByRole("button", { name: "Open one.txt at line 70", exact: true }).click();
   const jump = await gitPage.evaluate(() => {
     const view = window.__LUOCHU_EDITOR_VIEW__;
     return { line: view.state.doc.lineAt(view.state.selection.main.head).number,
       dirty: view.state.doc.toString().endsWith(" unsaved") };
   });
-  if (jump.line !== 21 || !jump.dirty || await gitPage.locator("#git-diff").isVisible())
+  if (jump.line !== 70 || !jump.dirty || await gitPage.locator("#git-diff").isVisible())
     throw new Error(`New-line navigation lost the dirty buffer or landed incorrectly: ${JSON.stringify(jump)}`);
+  const centeredCursor = async () => {
+    await gitPage.waitForFunction(() => {
+      const view = window.__LUOCHU_EDITOR_VIEW__, pos = view.state.selection.main.head,
+        cursor = view.coordsAtPos(pos), viewport = view.scrollDOM.getBoundingClientRect(),
+        line = view.dom.querySelector(".cm-activeLine");
+      return cursor && line?.textContent.includes("saved line 70") &&
+        getComputedStyle(line).backgroundColor !== "rgba(0, 0, 0, 0)" &&
+        Math.abs((cursor.top + cursor.bottom - viewport.top - viewport.bottom) / 2) < viewport.height * 0.15;
+    });
+  };
+  await centeredCursor();
+  await gitPage.evaluate(() => {
+    const view = window.__LUOCHU_EDITOR_VIEW__;
+    view.scrollDOM.scrollTop = view.lineBlockAt(view.state.doc.line(70).from).top - 30;
+  });
+  await gitPage.getByRole("link", { name: "M one.txt", exact: true }).click();
+  await numberedDiff.getByRole("button", { name: "Open one.txt at line 70", exact: true }).click();
+  await centeredCursor();
+  await gitPage.keyboard.press("ArrowDown");
+  if (!await gitPage.locator("#editor .cm-activeLine").textContent().then((text) => text.includes("saved line 71")))
+    throw new Error("Cursor line hint did not follow keyboard navigation");
   await gitPage.setViewportSize({ width: 1100, height: 750 });
   await gitPage.getByRole("link", { name: "M file-0002.txt", exact: true }).click();
   await gitPage.locator("#git-diff-content").hover();
@@ -655,9 +679,21 @@ try {
         writeFileSync(join(dir, `${name}.txt`), `${name} content\n`);
       }
       const firstRepo = join(fixture, "first");
-      writeFileSync(join(firstRepo, "committed.txt"), "committed content\n");
+      writeFileSync(join(firstRepo, "committed.txt"), "old content\n");
+      writeFileSync(join(firstRepo, "old name.txt"), "renamed content\n");
       for (const args of [
-        ["add", "committed.txt"],
+        ["add", "committed.txt", "old name.txt"],
+        ["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "history baseline"],
+        ["mv", "old name.txt", "new 名.txt"],
+      ]) {
+        const result = spawnSync("git", ["-C", firstRepo, ...args], { encoding: "utf8" });
+        if (result.status !== 0) throw new Error(result.stderr);
+      }
+      writeFileSync(join(firstRepo, "committed.txt"),
+        `committed content\n${Array.from({ length: 80 }, (_, i) => `history line ${i}`).join("\n")}\n`);
+      writeFileSync(join(firstRepo, "binary.dat"), Buffer.from([0, 1, 2]));
+      for (const args of [
+        ["add", "committed.txt", "binary.dat"],
         ["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "history fixture"],
       ]) {
         const result = spawnSync("git", ["-C", firstRepo, ...args], { encoding: "utf8" });
@@ -700,6 +736,31 @@ try {
       await realGitPage.getByRole("button", { name: "History", exact: true }).click();
       await realGitPage.locator("#git-history").getByRole("button", { name: /history fixture/ }).click();
       await realGitPage.locator("#git-history-diff").getByText("+committed content", { exact: false }).waitFor();
+      const historyFile = realGitPage.locator("#git-history-diff .git-diff-file").filter({
+        has: realGitPage.getByRole("heading", { name: "committed.txt", exact: true }),
+      });
+      if (await historyFile.locator(".git-diff-counts").innerText() !== "+81-1" ||
+          await historyFile.locator(".git-new-gutter button").count() ||
+          await realGitPage.getByRole("heading", { name: "new 名.txt", exact: true }).count() !== 1 ||
+          await realGitPage.getByRole("heading", { name: "binary.dat", exact: true }).count() !== 1)
+        throw new Error("History diff paths, counts, or historical line numbers are incorrect");
+      await historyFile.locator("summary").click();
+      if (await historyFile.locator(".git-diff-text").isVisible())
+        throw new Error("History file did not fold");
+      await historyFile.locator("summary").click();
+      await historyFile.locator(".git-diff-text").waitFor();
+      await realGitPage.locator("#git-history-diff").evaluate((node) => {
+        const section = [...node.querySelectorAll(".git-diff-file")]
+          .find((item) => item.querySelector("h3").textContent === "committed.txt");
+        node.scrollTop = section.offsetTop - node.offsetTop + 100;
+      });
+      const historySticky = await historyFile.locator("summary").evaluate((node) => {
+        const viewport = node.closest("#git-history-diff").getBoundingClientRect();
+        return { top: node.getBoundingClientRect().top - viewport.top,
+          section: node.parentElement.getBoundingClientRect().top - viewport.top };
+      });
+      if (historySticky.section >= 0 || Math.abs(historySticky.top) > 2)
+        throw new Error(`History heading did not stick: ${JSON.stringify(historySticky)}`);
       const historyColors = await realGitPage.locator("#git-history").evaluate((node) => ({
         list: getComputedStyle(node.querySelector("#git-history-list")).backgroundColor,
         diff: getComputedStyle(node.querySelector("#git-history-diff")).backgroundColor,
@@ -934,6 +995,10 @@ try {
       view.dispatch({ selection: { anchor: view.state.doc.line(5).from } });
       view.focus();
     });
+    const activeLine = page.locator("#editor .cm-activeLine");
+    if (await activeLine.count() !== 1 ||
+        await activeLine.evaluate((node) => getComputedStyle(node).backgroundColor) === "rgba(0, 0, 0, 0)")
+      throw new Error(`Cursor line is not highlighted in ${visual ? "visual" : "source"} mode`);
     await page.keyboard.press("Backspace");
     const actual = await page.evaluate(() => window.__LUOCHU_EDITOR_VIEW__.state.doc.toString());
     if (actual !== quote.replace("> second line\n\n", "> second line\n"))

@@ -516,6 +516,29 @@ func (s *Server) serveGit(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, err.Error(), http.StatusConflict)
 				return
 			}
+			if r.URL.Query().Get("format") == "files" {
+				names, err := gitCommand(root, "show", "--format=", "--name-only", "-z",
+					"--no-color", "--no-ext-diff", "--no-textconv", sha+"^{commit}", "--")
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusConflict)
+					return
+				}
+				paths := make([]string, 0)
+				for _, path := range bytes.Split(names, []byte{0}) {
+					if len(path) == 0 {
+						continue
+					}
+					if !utf8.Valid(path) {
+						http.Error(w, "invalid git path encoding", http.StatusInternalServerError)
+						return
+					}
+					paths = append(paths, string(path))
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.Header().Set("Cache-Control", "no-store")
+				_ = json.NewEncoder(w).Encode(map[string]any{"text": string(out), "paths": paths})
+				return
+			}
 			writeGitText(w, out)
 			return
 		}

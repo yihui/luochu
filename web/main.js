@@ -1,6 +1,6 @@
 import {parse, renderHTML} from '@djot/djot'
 import {EditorState, StateEffect, StateField} from '@codemirror/state'
-import {EditorView, keymap, Decoration, lineNumbers} from '@codemirror/view'
+import {EditorView, keymap, Decoration, lineNumbers, highlightActiveLine} from '@codemirror/view'
 import {defaultKeymap, history, historyKeymap} from '@codemirror/commands'
 import {tokenize} from './tokens.js'
 import {bullet, checkbox, image, footnote, footnoteLabel, math, table, rawHTML, renderPreviewMath,
@@ -163,7 +163,7 @@ function editorState(doc, djot, separator = '\n', language = []) {
     extensions: [
       history(), keymap.of([...defaultKeymap, ...historyKeymap]),
       modeField, djot ? decoField : language, separator ? EditorState.lineSeparator.of(separator) : [],
-      EditorView.lineWrapping, lineNumbers(),
+      EditorView.lineWrapping, lineNumbers(), highlightActiveLine(),
       EditorView.updateListener.of((update) => {
         view.dom.classList.toggle('visual', view.state.field(modeField))
         if (update.docChanged && (!activeTab || activeTab.djot)) schedulePreview()
@@ -355,7 +355,8 @@ async function loadTree(container, directory = '') {
 function jumpToLine(line) {
   if (!line) return
   const number = Math.min(line, view.state.doc.lines)
-  view.dispatch({selection: {anchor: view.state.doc.line(number).from}, scrollIntoView: true})
+  const anchor = view.state.doc.line(number).from
+  view.dispatch({selection: {anchor}, effects: EditorView.scrollIntoView(anchor, {y: 'center'})})
   view.focus()
 }
 async function openFile(path, line = null) {

@@ -36,16 +36,13 @@ export function diffLineTypes(text) {
   return types;
 }
 
-function renderHistoryDiff(container, text) {
-  const lines = text.split('\n'), types = diffLineTypes(text), fragment = document.createDocumentFragment();
-  if (text.endsWith('\n')) lines.pop();
-  lines.forEach((line, index) => {
-    const span = document.createElement('span');
-    if (types[index]) span.className = `git-diff-${types[index]}`;
-    span.textContent = line + (index < lines.length - 1 || text.endsWith('\n') ? '\n' : '');
-    fragment.append(span);
-  });
-  container.replaceChildren(fragment);
+export function splitCommitDiff(text, paths) {
+  const starts = [...text.matchAll(/^diff --git /gm)].map((match) => match.index);
+  if (starts.length !== paths.length) return null;
+  return {
+    metadata: text.slice(0, starts[0] ?? text.length),
+    files: starts.map((start, index) => ({path: paths[index], text: text.slice(start, starts[index + 1])})),
+  };
 }
 
 export function statusRows(changes) {
@@ -188,8 +185,9 @@ export function createGitPane(pane, apiUrl, initialDirectory, openFile, openGitT
           const selection = ++historySequence;
           historyDiff.textContent = 'Loading diff…';
           try {
-            const text = await responseText(await fetch(url({sha: entry.hash}), {credentials: 'same-origin'}));
-            if (selection === historySequence) renderHistoryDiff(historyDiff, text);
+            const data = JSON.parse(await responseText(await fetch(url({sha: entry.hash, format: 'files'}),
+              {credentials: 'same-origin'})));
+            if (selection === historySequence) renderHistoryDiff(data);
           } catch (error) {
             if (selection === historySequence) historyDiff.textContent = `Could not load commit: ${error.message}`;
           }
@@ -319,10 +317,50 @@ export function createGitPane(pane, apiUrl, initialDirectory, openFile, openGitT
     loadDiff(item);
     item.section.scrollIntoView({block: 'start'});
   }
-  function renderDiff(item, text) {
+  function createDiffSection(path) {
+    const section = document.createElement('details'), summary = document.createElement('summary'),
+      heading = document.createElement('h3'), counts = document.createElement('span'),
+      content = document.createElement('div');
+    section.className = 'git-diff-file';
+    section.open = true;
+    heading.textContent = path;
+    counts.className = 'git-diff-counts';
+    summary.append(heading, counts);
+    section.append(summary, content);
+    return {section, heading, counts, content};
+  }
+  function renderHistoryDiff({text, paths}) {
+    const parsed = splitCommitDiff(text, paths), fragment = document.createDocumentFragment(),
+      metadata = document.createElement('pre');
+    metadata.className = 'git-history-metadata';
+    if (!parsed) {
+      metadata.textContent = `Could not split commit diff by file; showing raw output.\n\n${text}`;
+      historyDiff.replaceChildren(metadata);
+      return;
+    }
+    metadata.textContent = parsed.metadata;
+    fragment.append(metadata);
+    for (const file of parsed.files) {
+      const item = {...createDiffSection(file.path), row: {path: file.path}};
+      renderDiff(item, file.text, false);
+      fragment.append(item.section);
+    }
+    historyDiff.replaceChildren(fragment);
+    historyDiff.scrollTop = 0;
+  }
+  function renderDiff(item, text, canOpen = true) {
     const scroller = document.createElement('div'), source = document.createElement('pre'),
       numbers = diffLineNumbers(text), types = diffLineTypes(text), lines = text.split('\n');
     if (text.endsWith('\n')) lines.pop();
+    const added = types.filter((type) => type === 'added').length,
+      removed = types.filter((type) => type === 'removed').length;
+    item.counts.replaceChildren();
+    for (const [type, count, sign] of [['added', added, '+'], ['removed', removed, '-']]) {
+      const span = document.createElement('span');
+      span.className = `git-count-${type}`;
+      span.textContent = `${sign}${count}`;
+      item.counts.append(span);
+    }
     scroller.className = 'git-diff-scroll';
     source.className = 'git-diff-text';
     const fragment = document.createDocumentFragment();
@@ -333,7 +371,8 @@ export function createGitPane(pane, apiUrl, initialDirectory, openFile, openGitT
       oldGutter.className = 'git-gutter git-old-gutter';
       if (old !== null) oldGutter.dataset.line = old;
       newGutter.className = 'git-gutter git-new-gutter';
-      if (current) {
+      if (current && !canOpen) newGutter.dataset.line = current;
+      else if (current) {
         const button = document.createElement('button');
         button.type = 'button';
         button.dataset.line = current;
@@ -372,7 +411,10 @@ export function createGitPane(pane, apiUrl, initialDirectory, openFile, openGitT
       if (current === diffSequence && version === item.version) {
         if (!item.loaded || text !== item.text) {
           if (text) renderDiff(item, text);
-          else item.content.textContent = '(No textual diff)';
+          else {
+            item.counts.replaceChildren();
+            item.content.textContent = '(No textual diff)';
+          }
         }
         item.text = text;
         item.loaded = true;
@@ -380,6 +422,7 @@ export function createGitPane(pane, apiUrl, initialDirectory, openFile, openGitT
     }).catch((error) => {
       if (current === diffSequence && version === item.version) {
         item.loaded = false;
+        item.counts.replaceChildren();
         item.content.textContent = `Could not load diff: ${error.message}`;
       }
     }).finally(() => {
@@ -396,15 +439,10 @@ export function createGitPane(pane, apiUrl, initialDirectory, openFile, openGitT
     });
   }
   function createReviewItem(row) {
-    const section = document.createElement('details'), summary = document.createElement('summary'),
-      heading = document.createElement('h3'), content = document.createElement('div'),
-      item = {row, section, heading, content, loading: false, loaded: false, stale: true, visible: false,
+    const item = {...createDiffSection(row.path), row, loading: false, loaded: false, stale: true, visible: false,
         text: null, version: 0, controller: null};
-    section.className = 'git-diff-file';
-    section.open = true;
+    const {section, content} = item;
     content.textContent = 'Waiting to load…';
-    summary.append(heading);
-    section.append(summary, content);
     section.addEventListener('toggle', () => {
       if (!section.open || !item.stale || item.loading) return;
       const bounds = section.getBoundingClientRect(), viewport = diffContent.getBoundingClientRect();
@@ -421,6 +459,7 @@ export function createGitPane(pane, apiUrl, initialDirectory, openFile, openGitT
     if (reset) {
       item.loaded = false;
       item.text = null;
+      item.counts.replaceChildren();
       item.content.textContent = 'Waiting to load…';
     }
     if (item.visible) loadDiff(item);
