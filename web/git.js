@@ -1,6 +1,8 @@
+import {button, element} from './dom.js';
+import {diffLines, diffLineType} from './diff.js';
+
 export function diffLineNumbers(text) {
-  const lines = text.split('\n'), numbers = [];
-  if (text.endsWith('\n')) lines.pop();
+  const lines = diffLines(text), numbers = [];
   let oldLine = 0, newLine = 0, inHunk = false;
   for (const line of lines) {
     const hunk = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
@@ -21,19 +23,8 @@ export function diffLineNumbers(text) {
 }
 
 export function diffLineTypes(text) {
-  const lines = text.split('\n'), types = [];
-  if (text.endsWith('\n')) lines.pop();
-  let inHunk = false;
-  for (const line of lines) {
-    let type = '';
-    if (line.startsWith('diff --')) { inHunk = false; type = 'header'; }
-    else if (line.startsWith('@@ ')) { inHunk = true; type = 'hunk'; }
-    else if (inHunk && line.startsWith('+')) type = 'added';
-    else if (inHunk && line.startsWith('-')) type = 'removed';
-    else if (!inHunk && /^(?:index |--- |\+\+\+ )/.test(line)) type = 'header';
-    types.push(type);
-  }
-  return types;
+  const state = {inHunk: false};
+  return diffLines(text).map((line) => diffLineType(line, state));
 }
 
 export function splitCommitDiff(text, paths) {
@@ -72,43 +63,22 @@ export function createGitPane(pane, apiUrl, initialDirectory, openFile, openGitT
     statusRequests = 0, busy = false, rows = [],
     statusKnown = false, statusFailed = false, observer = null, reviewItems = [], pendingTarget = null,
     gitInfo = null;
-  const header = document.createElement('div'), branch = document.createElement('select'),
-    refreshButton = document.createElement('button'), root = document.createElement('div'),
-    message = document.createElement('div'), list = document.createElement('div'),
-    actions = document.createElement('div'), commitInput = document.createElement('textarea'),
-    commitButton = document.createElement('button'), cleanupButton = document.createElement('button'),
-    pullButton = document.createElement('button'), pushButton = document.createElement('button'),
-    historyButton = document.createElement('button'),
+  const header = element('div', 'git-header'),
+    branch = element('select', {attrs: {'aria-label': 'Git branch'}}),
+    refreshButton = button('Refresh'), root = element('div', 'git-root'),
+    message = element('div', 'git-message', {attrs: {role: 'status'}}),
+    list = element('div', 'git-list'), actions = element('div', 'git-actions'),
+    commitInput = element('textarea',
+      {placeholder: 'Commit message', rows: 3, attrs: {'aria-label': 'Commit message'}}),
+    commitButton = button('Commit'), cleanupButton = button('Cleanup merged'),
+    pullButton = button('Pull'), pushButton = button('Push'),
+    historyButton = button('History'),
     diff = document.querySelector('#git-diff'),
     diffContent = document.querySelector('#git-diff-content'),
     reviewByElement = new WeakMap();
-  header.className = 'git-header';
-  branch.setAttribute('aria-label', 'Git branch');
-  refreshButton.type = 'button';
-  refreshButton.textContent = 'Refresh';
   header.append(branch, refreshButton);
-  root.className = 'git-root';
-  message.className = 'git-message';
-  message.setAttribute('role', 'status');
-  list.className = 'git-list';
-  actions.className = 'git-actions';
-  commitInput.placeholder = 'Commit message';
-  commitInput.setAttribute('aria-label', 'Commit message');
-  commitInput.rows = 3;
-  commitButton.type = 'button';
-  commitButton.textContent = 'Commit';
-  cleanupButton.type = 'button';
-  cleanupButton.textContent = 'Cleanup merged';
-  pullButton.type = 'button';
-  pullButton.textContent = 'Pull';
-  pushButton.type = 'button';
-  pushButton.textContent = 'Push';
-  historyButton.type = 'button';
-  historyButton.textContent = 'History';
-  const commitRow = document.createElement('div'), branchRow = document.createElement('div');
-  commitRow.className = 'git-action-row';
+  const commitRow = element('div', 'git-action-row'), branchRow = element('div', 'git-action-row');
   commitRow.append(commitInput, commitButton);
-  branchRow.className = 'git-action-row';
   branchRow.append(pullButton, pushButton, historyButton, cleanupButton);
   actions.append(commitRow, branchRow);
   pane.replaceChildren(header, root, message, list, actions);
@@ -176,12 +146,9 @@ export function createGitPane(pane, apiUrl, initialDirectory, openFile, openGitT
       if (current !== historySequence) return;
       historyList.replaceChildren();
       for (const entry of data.log || []) {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'git-history-entry';
-        button.textContent = `${entry.short} ${entry.subject}`;
-        button.title = `${entry.hash}\n${entry.author} · ${entry.date}`;
-        button.onclick = async () => {
+        const entryButton = button(`${entry.short} ${entry.subject}`, 'git-history-entry',
+          {title: `${entry.hash}\n${entry.author} · ${entry.date}`});
+        entryButton.onclick = async () => {
           const selection = ++historySequence;
           historyDiff.textContent = 'Loading diff…';
           try {
@@ -192,7 +159,7 @@ export function createGitPane(pane, apiUrl, initialDirectory, openFile, openGitT
             if (selection === historySequence) historyDiff.textContent = `Could not load commit: ${error.message}`;
           }
         };
-        historyList.append(button);
+        historyList.append(entryButton);
       }
       if (!data.log?.length) historyList.textContent = 'No commits';
     } catch (error) {
@@ -200,17 +167,11 @@ export function createGitPane(pane, apiUrl, initialDirectory, openFile, openGitT
     }
   }
   historyButton.onclick = () => openGitTab('git-history');
-  const cleanupDialog = document.createElement('dialog'), cleanupBase = document.createElement('select'),
-    cleanupLocal = document.createElement('div'), cleanupWorktrees = document.createElement('div'),
-    cleanupNote = document.createElement('div'),
-    cleanupActions = document.createElement('div'), cleanupCancel = document.createElement('button'),
-    cleanupRemove = document.createElement('button');
-  cleanupDialog.className = 'git-cleanup';
-  cleanupBase.setAttribute('aria-label', 'Cleanup base branch');
-  cleanupCancel.type = 'button';
-  cleanupCancel.textContent = 'Cancel';
-  cleanupRemove.type = 'button';
-  cleanupRemove.textContent = 'Delete selected';
+  const cleanupDialog = element('dialog', 'git-cleanup'),
+    cleanupBase = element('select', {attrs: {'aria-label': 'Cleanup base branch'}}),
+    cleanupLocal = element('div'), cleanupWorktrees = element('div'), cleanupNote = element('div'),
+    cleanupActions = element('div'), cleanupCancel = button('Cancel'),
+    cleanupRemove = button('Delete selected');
   cleanupActions.append(cleanupCancel, cleanupRemove);
   cleanupDialog.append(cleanupBase, cleanupNote, cleanupLocal, cleanupWorktrees, cleanupActions);
   pane.append(cleanupDialog);
@@ -218,8 +179,7 @@ export function createGitPane(pane, apiUrl, initialDirectory, openFile, openGitT
 
   function cleanupSection(title, container) {
     container.replaceChildren();
-    const heading = document.createElement('strong');
-    heading.textContent = title;
+    const heading = element('strong', null, title);
     container.append(heading);
   }
   async function loadCleanupPreview() {
@@ -233,13 +193,10 @@ export function createGitPane(pane, apiUrl, initialDirectory, openFile, openGitT
 
       cleanupSection('Local branches', cleanupLocal);
       for (const candidate of [...(data.local || [])].sort((a, b) => a.name.localeCompare(b.name))) {
-        const label = document.createElement('label'), input = document.createElement('input'),
-          text = document.createElement('span');
-        input.type = 'checkbox';
-        input.checked = true;
-        input.dataset.name = candidate.name;
-        input.dataset.cleanup = 'local';
-        text.textContent = ` ${candidate.name} — ${candidate.reason}`;
+        const label = element('label'),
+          input = element('input', {type: 'checkbox', checked: true,
+            attrs: {'data-name': candidate.name, 'data-cleanup': 'local'}}),
+          text = element('span', null, ` ${candidate.name} — ${candidate.reason}`);
         label.append(input, text);
         cleanupLocal.append(label);
       }
@@ -247,12 +204,9 @@ export function createGitPane(pane, apiUrl, initialDirectory, openFile, openGitT
 
       cleanupSection('Associated worktrees', cleanupWorktrees);
       for (const wt of [...(data.worktrees || [])].sort((a, b) => a.path.localeCompare(b.path))) {
-        const label = document.createElement('label'), input = document.createElement('input'),
-          text = document.createElement('span');
-        input.type = 'checkbox';
-        input.checked = false;
-        input.dataset.path = wt.path;
-        text.textContent = ` ${wt.path} — ${wt.branch}`;
+        const label = element('label'),
+          input = element('input', {type: 'checkbox', checked: false, attrs: {'data-path': wt.path}}),
+          text = element('span', null, ` ${wt.path} — ${wt.branch}`);
         label.append(input, text);
         cleanupWorktrees.append(label);
       }
@@ -261,16 +215,21 @@ export function createGitPane(pane, apiUrl, initialDirectory, openFile, openGitT
       cleanupNote.textContent = `Could not scan branches: ${error.message}`;
     }
   }
-  cleanupButton.onclick = async () => {
-    cleanupBase.replaceChildren();
-    for (const name of gitInfo?.branches || []) {
-      const option = document.createElement('option');
-      option.value = option.textContent = name;
-      cleanupBase.append(option);
+  function setBranchOptions(select, names) {
+    select.replaceChildren();
+    for (const name of names) {
+      const option = element('option', null, name, {value: name});
+      select.append(option);
     }
+  }
+  function hasBranchOption(select, name) {
+    return [...select.options].some((option) => option.value === name);
+  }
+  cleanupButton.onclick = async () => {
+    setBranchOptions(cleanupBase, gitInfo?.branches || []);
     const preferred = gitInfo?.branches?.includes('main') ? 'main'
       : gitInfo?.branches?.includes('master') ? 'master' : gitInfo?.branch;
-    if ([...cleanupBase.options].some((option) => option.value === preferred))
+    if (hasBranchOption(cleanupBase, preferred))
       cleanupBase.value = preferred;
     cleanupDialog.showModal();
     await loadCleanupPreview();
@@ -318,21 +277,16 @@ export function createGitPane(pane, apiUrl, initialDirectory, openFile, openGitT
     item.section.scrollIntoView({block: 'start'});
   }
   function createDiffSection(path) {
-    const section = document.createElement('details'), summary = document.createElement('summary'),
-      heading = document.createElement('h3'), counts = document.createElement('span'),
-      content = document.createElement('div');
-    section.className = 'git-diff-file';
-    section.open = true;
-    heading.textContent = path;
-    counts.className = 'git-diff-counts';
+    const section = element('details', 'git-diff-file', {open: true}), summary = element('summary'),
+      heading = element('h3', null, path), counts = element('span', 'git-diff-counts'),
+      content = element('div');
     summary.append(heading, counts);
     section.append(summary, content);
     return {section, heading, counts, content};
   }
   function renderHistoryDiff({text, paths}) {
     const parsed = splitCommitDiff(text, paths), fragment = document.createDocumentFragment(),
-      metadata = document.createElement('pre');
-    metadata.className = 'git-history-metadata';
+      metadata = element('pre', 'git-history-metadata');
     if (!parsed) {
       metadata.textContent = `Could not split commit diff by file; showing raw output.\n\n${text}`;
       historyDiff.replaceChildren(metadata);
@@ -349,42 +303,33 @@ export function createGitPane(pane, apiUrl, initialDirectory, openFile, openGitT
     historyDiff.scrollTop = 0;
   }
   function renderDiff(item, text, canOpen = true) {
-    const scroller = document.createElement('div'), source = document.createElement('pre'),
-      numbers = diffLineNumbers(text), types = diffLineTypes(text), lines = text.split('\n');
-    if (text.endsWith('\n')) lines.pop();
+    const scroller = element('div', 'git-diff-scroll'), source = element('pre', 'git-diff-text'),
+      numbers = diffLineNumbers(text), types = diffLineTypes(text), lines = diffLines(text);
     const added = types.filter((type) => type === 'added').length,
       removed = types.filter((type) => type === 'removed').length;
     item.counts.replaceChildren();
     for (const [type, count, sign] of [['added', added, '+'], ['removed', removed, '-']]) {
-      const span = document.createElement('span');
-      span.className = `git-count-${type}`;
-      span.textContent = `${sign}${count}`;
+      const span = element('span', `git-count-${type}`, `${sign}${count}`);
       item.counts.append(span);
     }
-    scroller.className = 'git-diff-scroll';
-    source.className = 'git-diff-text';
     const fragment = document.createDocumentFragment();
     numbers.forEach(({old, current}, index) => {
-      const row = document.createElement('span'), oldGutter = document.createElement('span'),
-        newGutter = document.createElement('span'), line = document.createElement('span');
-      row.className = 'git-diff-row';
-      oldGutter.className = 'git-gutter git-old-gutter';
+      const row = element('span', 'git-diff-row'),
+        oldGutter = element('span', 'git-gutter git-old-gutter'),
+        newGutter = element('span', 'git-gutter git-new-gutter'),
+        line = element('span', `git-diff-line${types[index] ? ` git-diff-${types[index]}` : ''}`,
+          lines[index] + (index < lines.length - 1 || text.endsWith('\n') ? '\n' : ''));
       if (old !== null) oldGutter.dataset.line = old;
-      newGutter.className = 'git-gutter git-new-gutter';
       if (current && !canOpen) newGutter.dataset.line = current;
       else if (current) {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.dataset.line = current;
-        button.setAttribute('aria-label', `Open ${item.row.path} at line ${current}`);
+        const jump = button(undefined, null,
+          {attrs: {'data-line': current, 'aria-label': `Open ${item.row.path} at line ${current}`}});
         if (!item.row.projectPath) {
-          button.disabled = true;
-          button.title = 'File is outside the project root';
+          jump.disabled = true;
+          jump.title = 'File is outside the project root';
         }
-        newGutter.append(button);
+        newGutter.append(jump);
       }
-      line.className = `git-diff-line${types[index] ? ` git-diff-${types[index]}` : ''}`;
-      line.textContent = lines[index] + (index < lines.length - 1 || text.endsWith('\n') ? '\n' : '');
       row.append(oldGutter, newGutter, line);
       fragment.append(row);
     });
@@ -558,19 +503,15 @@ export function createGitPane(pane, apiUrl, initialDirectory, openFile, openGitT
   const pageSize = 40, pages = [], visiblePages = new Set(), pageIndex = new WeakMap(),
     rowState = new WeakMap();
   function createRow(row) {
-    const item = document.createElement('div'), file = document.createElement('a'),
-      action = document.createElement('input'), status = document.createElement('span'),
+    const item = element('div', 'git-row'),
+      file = element('a', 'git-file', {href: '#git-diff'}),
+      action = element('input', {type: 'checkbox'}), status = element('span', 'git-status'),
       state = {row, file, action, status};
-    item.className = 'git-row';
-    file.href = '#git-diff';
-    file.className = 'git-file';
-    status.className = 'git-status';
     file.append(status, document.createTextNode(''));
     file.onclick = (event) => {
       event.preventDefault();
       openGitTab('git-diff', {path: state.row.path});
     };
-    action.type = 'checkbox';
     action.onchange = () => change(state.row, action);
     item.append(action, file);
     rowState.set(item, state);
@@ -623,8 +564,7 @@ export function createGitPane(pane, apiUrl, initialDirectory, openFile, openGitT
       page.remove();
     }
     while (pages.length < count) {
-      const page = document.createElement('div');
-      page.className = 'git-page';
+      const page = element('div', 'git-page');
       pageIndex.set(page, pages.length);
       pages.push(page);
       list.append(page);
@@ -650,20 +590,10 @@ export function createGitPane(pane, apiUrl, initialDirectory, openFile, openGitT
       gitInfo = data;
       const branches = data.branches || [];
       const selectedBranch = branch.value;
-      branch.replaceChildren();
-      for (const name of branches) {
-        const option = document.createElement('option');
-        option.value = option.textContent = name;
-        branch.append(option);
-      }
-      if (!branches.length && data.branch) {
-        const option = document.createElement('option');
-        option.value = option.textContent = data.branch;
-        branch.append(option);
-      }
-      if ([...branch.options].some((option) => option.value === selectedBranch))
+      setBranchOptions(branch, !branches.length && data.branch ? [data.branch] : branches);
+      if (hasBranchOption(branch, selectedBranch))
         branch.value = selectedBranch;
-      else if ([...branch.options].some((option) => option.value === data.branch))
+      else if (hasBranchOption(branch, data.branch))
         branch.value = data.branch;
       root.textContent = data.relativeRoot === '.' ? '' : data.relativeRoot;
       root.title = data.relativeRoot === '.' ? '' : data.root;

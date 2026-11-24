@@ -2,18 +2,12 @@ import { WidgetType } from "@codemirror/view";
 import { imageURL } from "./urls.js";
 import { sanitizeHTML } from "./safe-html.js";
 import { loadStylesheet } from "./assets.js";
+import { element, button } from "./dom.js";
 
 class Widget extends WidgetType {
   constructor(key, make) { super(); this.key = key; this.make = make; }
   eq(other) { return this.key === other.key; }
   toDOM(view) { return this.make(view); }
-}
-
-function element(tag, cls, text) {
-  const node = document.createElement(tag);
-  if (cls) node.className = cls;
-  if (text !== undefined) node.textContent = text;
-  return node;
 }
 
 function revealSource(node, view, from) {
@@ -53,10 +47,8 @@ export function emptyBlock(token) {
 
 export function checkbox(token) {
   return new Widget(`check:${token.from}:${token.checked}`, (view) => {
-    const node = element("input", "dj-check");
-    node.type = "checkbox";
-    node.checked = token.checked;
-    node.setAttribute("aria-label", "Toggle task");
+    const node = element("input", "dj-check", { type: "checkbox", checked: token.checked,
+      attrs: { "aria-label": "Toggle task" } });
     node.addEventListener("change", () => {
       view.dispatch({ changes: { from: token.from + 1, to: token.from + 2,
         insert: node.checked ? "x" : " " } });
@@ -93,14 +85,12 @@ export function rawHTML(token, path) {
 
 export function footnote(token) {
   return new Widget(`footnote:${token.number}:${token.target}`, (view) => {
-    const button = element("button", "dj-footnote-ref", String(token.number));
-    button.type = "button";
-    button.title = "Go to footnote";
-    button.addEventListener("click", () => {
+    const node = button(String(token.number), "dj-footnote-ref", { title: "Go to footnote" });
+    node.addEventListener("click", () => {
       view.dispatch({ selection: { anchor: token.target }, scrollIntoView: true });
       view.focus();
     });
-    return button;
+    return node;
   });
 }
 

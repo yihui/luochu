@@ -1,7 +1,7 @@
+import { element } from "./dom.js";
+
 export function loadStylesheet(doc, href, name) {
-  const link = doc.createElement("link");
-  link.rel = "stylesheet";
-  link.href = href;
+  const link = element("link", null, undefined, { rel: "stylesheet", href }, doc);
   const ready = new Promise((resolve, reject) => {
     link.onload = resolve;
     link.onerror = () => reject(new Error(`Could not load ${name} stylesheet`));

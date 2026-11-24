@@ -1,3 +1,5 @@
+import {diffLineType} from './diff.js';
+
 // Regex rules are deliberately shallow, as in lite.js's prism-lite; the stream
 // state only tracks constructs that can continue onto another line.
 const S = String.raw;
@@ -214,16 +216,11 @@ const markdownMode = {
   },
 };
 
+const diffStyles = {header: 'comment', hunk: 'tagName', added: 'inserted', removed: 'deleted'};
 const diffMode = {
   startState: () => ({inHunk: false}),
   token(stream, state) {
-    const line = stream.string;
-    let style = null;
-    if (/^diff --/.test(line)) { state.inHunk = false; style = 'comment'; }
-    else if (/^@@ /.test(line)) { state.inHunk = true; style = 'tagName'; }
-    else if (state.inHunk && line.startsWith('+')) style = 'inserted';
-    else if (state.inHunk && line.startsWith('-')) style = 'deleted';
-    else if (!state.inHunk && /^(?:index |--- |\+\+\+ )/.test(line)) style = 'comment';
+    const style = diffStyles[diffLineType(stream.string, state)] || null;
     stream.skipToEnd();
     return style;
   },

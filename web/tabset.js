@@ -1,3 +1,5 @@
+import { element, button } from './dom.js';
+
 export function createTabset(bar, selectTab, closeTab) {
   const items = new Map();
   bar.addEventListener('keydown', (event) => {
@@ -17,18 +19,12 @@ export function createTabset(bar, selectTab, closeTab) {
     tabs.forEach((tab, index) => {
       let item = items.get(tab.key);
       if (!item) {
-        item = document.createElement('span');
-        item.className = 'tab';
-        const select = document.createElement('button');
-        select.type = 'button';
-        select.className = 'tab-select';
+        item = element('span', 'tab');
+        const select = button(undefined, 'tab-select');
         select.onclick = () => selectTab(tab.key);
         item.append(select);
         if (closeTab) {
-          const close = document.createElement('button');
-          close.type = 'button';
-          close.className = 'tab-close';
-          close.textContent = '×';
+          const close = button('×', 'tab-close');
           close.onclick = () => closeTab(tab.key);
           item.append(close);
         }

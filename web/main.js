@@ -11,6 +11,7 @@ import {sanitizeHTML} from './safe-html.js'
 import {loadStylesheet} from './assets.js'
 import {createTabset} from './tabset.js'
 import {codeLanguage} from './code-languages.js'
+import {button, element} from './dom.js'
 import demo from './demo.dj'
 
 let currentPath = null, activeTab = null, openSequence = 0;
@@ -327,10 +328,8 @@ async function loadTree(container, directory = '') {
   for (const entry of entries) {
     if (entry.name.startsWith('.')) continue;
     if (entry.type === 'directory') {
-      const folder = document.createElement('details'), label = document.createElement('summary'),
-        children = document.createElement('div');
-      label.textContent = entry.name;
-      children.className = 'file-tree-children';
+      const folder = element('details'), label = element('summary', null, entry.name),
+        children = element('div', 'file-tree-children');
       folder.append(label, children);
       label.addEventListener('click', () => selectGitDirectory(entry.path));
       let loaded = false, loading = false;
@@ -342,11 +341,9 @@ async function loadTree(container, directory = '') {
       });
       container.append(folder);
     } else {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.textContent = entry.name;
-      button.onclick = () => openFile(entry.path);
-      container.append(button);
+      const file = button(entry.name);
+      file.onclick = () => openFile(entry.path);
+      container.append(file);
     }
   }
   if (!container.childNodes.length) container.textContent = '(empty)';
@@ -501,8 +498,8 @@ function closeTerminal(tab) {
   else renderTerminals(terminals.map((item) => ({key: item, label: item.label})), activeTerminal);
 }
 function addTerminal() {
-  const tab = {label: `Terminal ${++terminalNumber}`, element: document.createElement('div'), status: ''};
-  tab.element.className = 'terminal-instance';
+  const tab = {label: `Terminal ${++terminalNumber}`, element: element('div', 'terminal-instance'),
+    status: ''};
   terminalContainer.append(tab.element);
   terminals.push(tab);
   selectTerminal(tab);
