@@ -9,14 +9,10 @@ art and current implementation.
 
 ## Active work
 
-- Prioritize [#7](https://github.com/yihui/luochu/issues/7) (git and diff
-  review), then [#9](https://github.com/yihui/luochu/issues/9) (browser Wasm).
+- Prioritize [#9](https://github.com/yihui/luochu/issues/9) (browser Wasm).
   Issue #9 currently depends on #8's execution protocol and cache; reconcile
   that dependency when starting #9 rather than claiming native-first and
   shared-protocol support before it exists.
-- For #7, implement commits from staged changes, then branch controls, log, and
-  push. Clarify whether the issue title's agent-patch review is still in scope.
-  See README's Git section for the current behavior.
 - Terminal follow-ups: implement the error helper and test interactive
   Claude/Copilot sessions, including on Windows. Real RStudio proxy validation
   is tracked in #11.
