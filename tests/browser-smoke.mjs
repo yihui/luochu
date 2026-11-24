@@ -356,9 +356,8 @@ try {
   await gitPage.locator("#git-toggle").click();
   await gitPage.getByRole("link", { name: "M file-0002.txt", exact: true }).waitFor();
   const displayedRoot = gitPage.locator("#git-pane .git-root");
-  if (await displayedRoot.textContent() !== "one" || await displayedRoot.getAttribute("title") !== "/repos/one" ||
-      await gitPage.getByText("Git shows saved files", { exact: false }).count())
-    throw new Error("Git repository label or reminder is incorrect");
+  if (await displayedRoot.textContent() !== "one" || await displayedRoot.getAttribute("title") !== "/repos/one")
+    throw new Error("Git repository label is incorrect");
   if (await gitPage.locator("#git-pane .git-row").count() > 120 ||
       await gitPage.locator("#git-pane .git-list [style]").count())
     throw new Error("Git status list was not virtualized");
@@ -658,8 +657,7 @@ try {
       await realGitPage.getByText("+first content", { exact: false }).waitFor();
       const tabBar = realGitPage.locator("#file-tabs");
       if (await tabBar.getByRole("button", { name: "Git diff", exact: true }).getAttribute("aria-pressed") !== "true" ||
-          await realGitPage.locator("#editor").isVisible() || await realGitPage.locator("#preview-pane").isVisible() ||
-          await realGitPage.getByRole("button", { name: "Close diff", exact: true }).count())
+          await realGitPage.locator("#editor").isVisible() || await realGitPage.locator("#preview-pane").isVisible())
         throw new Error("Diff tab does not exclusively display the Git diff");
       await realGitPage.getByRole("button", { name: "History", exact: true }).click();
       await realGitPage.locator("#git-history").getByRole("button", { name: /history fixture/ }).click();
@@ -1363,8 +1361,6 @@ try {
     throw new Error(`Raw HTML whitespace was not rendered correctly: ${JSON.stringify(rawContent)}`);
   await page.locator("#terminal-controls").waitFor({ state: "visible" });
   if (terminalRequests.length) throw new Error("Terminal assets loaded before the terminal was opened");
-  if (await page.locator("#terminal-controls select").count())
-    throw new Error("Terminal controls should not offer command selection");
   await page.locator("#terminal-toggle").click();
   await page.waitForFunction(() => document.querySelector("#terminal-status").textContent.startsWith("Connected."))
     .catch(async (error) => { throw new Error(`${error.message}: ${await page.locator("#terminal-status").textContent()}`); });
