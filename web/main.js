@@ -10,6 +10,7 @@ import {imageURL} from './urls.js'
 import {sanitizeHTML} from './safe-html.js'
 import {loadStylesheet} from './assets.js'
 import {createTabset} from './tabset.js'
+import {codeLanguage} from './code-languages.js'
 import demo from './demo.dj'
 
 let currentPath = null, activeTab = null, openSequence = 0;
@@ -156,12 +157,12 @@ function schedulePreview() {
   })
 }
 
-function editorState(doc, djot, separator = '\n') {
+function editorState(doc, djot, separator = '\n', language = []) {
   return EditorState.create({
     doc,
     extensions: [
       history(), keymap.of([...defaultKeymap, ...historyKeymap]),
-      modeField, djot ? decoField : [], separator ? EditorState.lineSeparator.of(separator) : [],
+      modeField, djot ? decoField : language, separator ? EditorState.lineSeparator.of(separator) : [],
       EditorView.lineWrapping, lineNumbers(),
       EditorView.updateListener.of((update) => {
         view.dom.classList.toggle('visual', view.state.field(modeField))
@@ -361,7 +362,7 @@ async function openFile(path, line = null) {
   const sequence = ++openSequence, existing = tabs.find((tab) => !tab.kind && tab.path === path)
   if (existing) { activateTab(existing); jumpToLine(line); return }
   fileStatus.textContent = ''
-  let response, text
+  let response, text, language = [], syntaxError = null
   try {
     response = await fetch(apiUrl(`api/file?path=${encodeURIComponent(path)}&text=1`), {credentials: 'same-origin'})
     if (response.status === 415) {
@@ -371,9 +372,15 @@ async function openFile(path, line = null) {
     }
     if (!response.ok) throw new Error(`File request failed: ${response.status}`)
     text = new TextDecoder('utf-8', {fatal: true, ignoreBOM: true}).decode(await response.arrayBuffer())
+    if (sequence !== openSequence) return
   } catch (error) {
     if (sequence === openSequence) fileStatus.textContent = `Could not open ${path}: ${error.message}`
     return
+  }
+  if (sequence !== openSequence) return
+  if (!/\.dj$/i.test(path)) {
+    try { language = await codeLanguage(path) }
+    catch (error) { syntaxError = error }
   }
   if (sequence !== openSequence) return
   const djot = /\.dj$/i.test(path),
@@ -382,10 +389,11 @@ async function openFile(path, line = null) {
       crlf, dirty: false, conflict: false, saving: false, scrollTop: 0}
   const previousPath = currentPath
   currentPath = path
-  tab.state = editorState(text, djot, crlf ? null : '\n')
+  tab.state = editorState(text, djot, crlf ? null : '\n', language)
   currentPath = previousPath
   tabs.push(tab)
   activateTab(tab)
+  if (syntaxError) fileStatus.textContent = `Could not load syntax highlighting: ${syntaxError.message}`
   jumpToLine(line)
 }
 function tabText(tab, state) {

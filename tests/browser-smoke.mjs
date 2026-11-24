@@ -36,7 +36,7 @@ try {
   browser = await chromium.launch({ headless: true });
   const noMathBundle = await esbuild.build({
     entryPoints: ["web/main.js"], bundle: true, format: "iife", write: false,
-    loader: { ".dj": "text" }, external: ["./math.js", "./terminal.js", "./git.js"], minify: true,
+    loader: { ".dj": "text" }, external: ["./math.js", "./terminal.js", "./git.js", "./code-modes.js"], minify: true,
     define: { "process.env.NODE_ENV": '"production"' },
     plugins: [{ name: "no-math-demo", setup(build) {
       build.onLoad({ filter: /demo\.dj$/ }, () => ({ contents: "A document without math.", loader: "text" }));
@@ -91,6 +91,7 @@ try {
         { name: "retry", path: "retry", type: "directory" },
         { name: "root.txt", path: "root.txt", type: "file" },
         { name: "document.dj", path: "document.dj", type: "file" },
+        { name: "example.js", path: "example.js", type: "file" },
         { name: "binary.dat", path: "binary.dat", type: "file" },
         { name: "document.pdf", path: "document.pdf", type: "file" },
         { name: "invalid.txt", path: "invalid.txt", type: "file" },
@@ -127,7 +128,8 @@ try {
       return route.fulfill({ status: 415, body: path === "invalid.txt" ? "not UTF-8 text\n" : "binary file\n" });
     const body = path === "boundary.txt" ? "a".repeat(511) + "€\n"
       : path === "root.txt" ? "\ufeff# Not Djot\r\nsecond line\r\n"
-      : path === "document.dj" ? "# Djot heading\n" : `Opened ${path}`;
+      : path === "document.dj" ? "# Djot heading\n"
+      : path === "example.js" ? "const answer = 42;\n" : `Opened ${path}`;
     return route.fulfill({ body, headers: { "X-Luochu-Hash": "hash" } });
   });
   await treePage.goto(`http://127.0.0.1:${port}/proxy/?token=${token}`);
@@ -297,6 +299,12 @@ try {
   if (layout.tabs > layout.editorTop || layout.editorBottom > layout.previewTop ||
       Math.abs(layout.sidebarBottom - layout.mainBottom) > 1)
     throw new Error(`Mobile tabs, editor, and preview overlap: ${JSON.stringify(layout)}`);
+  await tree.getByText("example.js", { exact: true }).click();
+  await treePage.waitForFunction(() => {
+    const line = document.querySelector("#editor .cm-line"), token = line?.querySelector("span");
+    return line?.textContent === "const answer = 42;" && token?.textContent === "const" &&
+      getComputedStyle(token).color !== getComputedStyle(line).color;
+  });
   await treePage.close();
 
   const gitPage = await browser.newPage({ viewport: { width: 1100, height: 750 } }), gitRequests = [],

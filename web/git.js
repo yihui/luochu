@@ -20,6 +20,34 @@ export function diffLineNumbers(text) {
   return numbers;
 }
 
+export function diffLineTypes(text) {
+  const lines = text.split('\n'), types = [];
+  if (text.endsWith('\n')) lines.pop();
+  let inHunk = false;
+  for (const line of lines) {
+    let type = '';
+    if (line.startsWith('diff --')) { inHunk = false; type = 'header'; }
+    else if (line.startsWith('@@ ')) { inHunk = true; type = 'hunk'; }
+    else if (inHunk && line.startsWith('+')) type = 'added';
+    else if (inHunk && line.startsWith('-')) type = 'removed';
+    else if (!inHunk && /^(?:index |--- |\+\+\+ )/.test(line)) type = 'header';
+    types.push(type);
+  }
+  return types;
+}
+
+function renderHistoryDiff(container, text) {
+  const lines = text.split('\n'), types = diffLineTypes(text), fragment = document.createDocumentFragment();
+  if (text.endsWith('\n')) lines.pop();
+  lines.forEach((line, index) => {
+    const span = document.createElement('span');
+    if (types[index]) span.className = `git-diff-${types[index]}`;
+    span.textContent = line + (index < lines.length - 1 || text.endsWith('\n') ? '\n' : '');
+    fragment.append(span);
+  });
+  container.replaceChildren(fragment);
+}
+
 export function statusRows(changes) {
   const rows = new Map(), conflicts = new Set(['DD', 'AU', 'UD', 'UA', 'DU', 'AA', 'UU']);
   for (const change of changes) {
@@ -161,7 +189,7 @@ export function createGitPane(pane, apiUrl, initialDirectory, openFile, openGitT
           historyDiff.textContent = 'Loading diff…';
           try {
             const text = await responseText(await fetch(url({sha: entry.hash}), {credentials: 'same-origin'}));
-            if (selection === historySequence) historyDiff.textContent = text;
+            if (selection === historySequence) renderHistoryDiff(historyDiff, text);
           } catch (error) {
             if (selection === historySequence) historyDiff.textContent = `Could not load commit: ${error.message}`;
           }
@@ -293,7 +321,7 @@ export function createGitPane(pane, apiUrl, initialDirectory, openFile, openGitT
   }
   function renderDiff(item, text) {
     const scroller = document.createElement('div'), source = document.createElement('pre'),
-      numbers = diffLineNumbers(text), lines = text.split('\n');
+      numbers = diffLineNumbers(text), types = diffLineTypes(text), lines = text.split('\n');
     if (text.endsWith('\n')) lines.pop();
     scroller.className = 'git-diff-scroll';
     source.className = 'git-diff-text';
@@ -316,7 +344,7 @@ export function createGitPane(pane, apiUrl, initialDirectory, openFile, openGitT
         }
         newGutter.append(button);
       }
-      line.className = 'git-diff-line';
+      line.className = `git-diff-line${types[index] ? ` git-diff-${types[index]}` : ''}`;
       line.textContent = lines[index] + (index < lines.length - 1 || text.endsWith('\n') ? '\n' : '');
       row.append(oldGutter, newGutter, line);
       fragment.append(row);

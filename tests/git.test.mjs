@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { deepStrictEqual } from "node:assert";
-import { diffLineNumbers, statusRows } from "../web/git.js";
+import { diffLineNumbers, diffLineTypes, statusRows } from "../web/git.js";
 
 test("diff gutters count old and new lines across hunks", () => {
   const diff = [
@@ -32,6 +32,17 @@ test("new-file and binary diffs have correct gutters", () => {
     { old: null, current: null }, { old: null, current: 1 }, { old: null, current: 2 },
   ]);
   deepStrictEqual(diffLineNumbers("Binary files a/file and b/file differ\n"), [{ old: null, current: null }]);
+});
+
+test("diff highlighting distinguishes headers from changed content across files", () => {
+  const diff = [
+    "commit message", "diff --git a/a b/a", "--- a/a", "+++ b/a", "@@ -1 +1 @@",
+    "--- removed text", "+++ added text", " context", "\\ No newline at end of file",
+    "diff --git a/b b/b", "Binary files a/b and b/b differ",
+  ].join("\n");
+  deepStrictEqual(diffLineTypes(diff), [
+    "", "header", "header", "header", "hunk", "removed", "added", "", "", "header", "",
+  ]);
 });
 
 test("status combines staged and unstaged changes by file", () => {

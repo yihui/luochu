@@ -82,8 +82,8 @@ art and current implementation.
 - Ship one Go server binary with embedded UI. Generated assets, source maps,
   caches, and release archives are not committed. Keep the initial JS under
   roughly 200 KB compressed and lazy-load expensive functionality.
-- Current initial app JS: 135,051 bytes gzip and CSS: 2,694 bytes gzip; lazy
-  Git: 5,293 bytes JS. Lazy terminal: 72,532 bytes JS
+- Current initial app JS: 139,134 bytes gzip and CSS: 2,753 bytes gzip; lazy
+  Git: 5,512 bytes JS; lazy code modes: 3,241 bytes JS. Lazy terminal: 72,532 bytes JS
   and 1,725 bytes CSS gzip. Lazy KaTeX: 77,403 bytes JS and 4,168 bytes CSS
   gzip, plus fonts; the demo loads math at startup. Cold/warm timings remain
   unmeasured; see #22.

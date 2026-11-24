@@ -119,6 +119,12 @@ stages the remaining changes. Its diff compares the working file with the
 staged version.
 Long diff lines wrap. Click a new-file line number to open that line in the
 editor; files outside the project root cannot be opened this way.
+Diffs in review and history highlight additions, removals, and hunk headers.
+The source editor highlights JavaScript, TypeScript, JSON, Python, R, shell,
+CSS, HTML/XML, YAML, SQL, TeX, Markdown, and diff files. Markdown fences and
+HTML script/style blocks can highlight embedded code. Unknown file types get
+generic highlighting; plain-text files remain plain. Highlighting is lightweight
+and regex-based, not a complete parser.
 Enter a commit message and commit staged changes. Choose a branch from the
 header dropdown to switch, show recent commits, and pull or push the current
 branch. Cleanup merged previews merged branches, pruned gone remotes, and squash/merged
